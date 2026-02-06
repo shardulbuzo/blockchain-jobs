@@ -1,19 +1,15 @@
-import { useEffect, useMemo } from "react";
+import { useMemo } from "react";
 import { Link } from "wouter";
 import { motion } from "framer-motion";
 import { Building2, ArrowRight } from "lucide-react";
 import { Card } from "@/components/ui/card";
-import { Header, Footer } from "./home";
+import { Header, Footer, SEOHead } from "./home";
 import { useJobsStore } from "@/state/jobs-store";
 
 export default function Companies() {
-  const { jobIds, jobsById, categories, locations } = useJobsStore();
+  const { jobIds, jobsById, categories, locations, companies } = useJobsStore();
 
-  useEffect(() => {
-    document.title = "Companies — JobHaven";
-  }, []);
-
-  const companies = useMemo(() => {
+  const companiesList = useMemo(() => {
     const counts: Record<string, { logo: string; count: number }> = {};
     jobIds.forEach(id => {
       const job = jobsById[id];
@@ -23,16 +19,36 @@ export default function Companies() {
       }
       counts[job.company].count++;
     });
-    return Object.entries(counts).map(([name, data]) => ({
-      name,
-      ...data
-    })).sort((a, b) => b.count - a.count);
-  }, [jobIds, jobsById]);
+    const base = companies.length
+      ? companies.map((company) => ({
+          name: company.name,
+          logo: company.logo || counts[company.name]?.logo || "",
+          count: counts[company.name]?.count || 0,
+        }))
+      : Object.entries(counts).map(([name, data]) => ({
+          name,
+          ...data,
+        }));
+    return base.sort((a, b) => b.count - a.count);
+  }, [companies, jobIds, jobsById]);
 
   return (
     <div className="min-h-screen">
+      <SEOHead
+        title="Top Web3 Companies Hiring — JobHaven"
+        description="Discover verified Web3, blockchain, crypto, and fintech companies hiring worldwide. Browse company profiles, open roles, and featured listings."
+        canonicalPath="/companies"
+        keywords={[
+          "web3 companies",
+          "blockchain companies",
+          "crypto companies hiring",
+          "fintech companies",
+          "web3 startups",
+          "blockchain careers",
+        ]}
+      />
       <Header />
-      <main className="mx-auto max-w-6xl px-4 py-12">
+      <main id="main-content" className="mx-auto max-w-6xl px-4 py-12">
         <div className="max-w-2xl">
           <h1 className="font-serif text-4xl tracking-tight">Top Web3 Companies</h1>
           <p className="mt-3 text-lg text-muted-foreground">
@@ -41,7 +57,7 @@ export default function Companies() {
         </div>
 
         <div className="mt-12 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {companies.map((company, idx) => (
+          {companiesList.map((company, idx) => (
             <motion.div
               key={company.name}
               initial={{ opacity: 0, y: 10 }}

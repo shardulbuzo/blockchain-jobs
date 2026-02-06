@@ -1,63 +1,146 @@
-import { useState, useEffect } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { motion } from "framer-motion";
-import { Shield, Users, Image, Link as LinkIcon, Save, Lock, LogIn, AlertCircle } from "lucide-react";
+import { Shield, Users, Image, Link as LinkIcon, Save, Lock, LogIn, AlertCircle, Megaphone, Sparkles } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useJobsStore } from "@/state/jobs-store";
-import { Header } from "./home";
+import { useSessionStore } from "@/state/session-store";
+import { Header, SEOHead } from "./home";
 
 export default function SuperAdmin() {
-  const { adConfig, updateAdConfig } = useJobsStore();
+  const { adConfig, updateAdConfig, jobSubmissions, publishSubmission, analyticsId, setAnalyticsId } = useJobsStore();
+  const { users } = useSessionStore();
   const [newAdConfig, setNewAdConfig] = useState(adConfig);
+  const [gaInput, setGaInput] = useState(analyticsId || "");
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
+  const [checking, setChecking] = useState(true);
+  const [adminEmail, setAdminEmail] = useState("");
   
-  // Mock candidate data
-  const candidates = [
-    { id: 1, name: "Alex Candidate", email: "alex@example.com", provider: "google", savedJobs: 3 },
-    { id: 2, name: "Sarah Dev", email: "sarah@blockchain.io", provider: "linkedin", savedJobs: 5 },
-    { id: 3, name: "Jordan Smith", email: "jordan@web3.com", provider: "google", savedJobs: 1 },
-  ];
+  const candidates = useMemo(
+    () =>
+      users.map((user, idx) => ({
+        id: idx + 1,
+        name: user.name,
+        email: user.email,
+        provider: user.provider,
+        linkedin: user.linkedin || "—",
+      })),
+    [users],
+  );
 
-  useEffect(() => {
-    // Prevent indexing
-    const robots = document.createElement('meta');
-    robots.name = "robots";
-    robots.content = "noindex, nofollow";
-    document.head.appendChild(robots);
-    
-    document.title = "SuperAdmin Access — Restricted";
-    
-    return () => {
-      document.head.removeChild(robots);
-    };
-  }, []);
-
-  const handleLogin = (e: React.FormEvent) => {
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    // Simple hardcoded mock credentials for the prototype
-    if (email === "admin@jobhaven.com" && password === "admin123") {
+    setError("");
+    try {
+      const res = await fetch("/api/admin/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, password }),
+      });
+      if (!res.ok) {
+        setError("Invalid administrative credentials.");
+        return;
+      }
       setIsAuthenticated(true);
-      setError("");
-    } else {
-      setError("Invalid administrative credentials.");
+      setAdminEmail(email);
+      window.localStorage.setItem("jobhaven-admin-email", email);
+      await fetch("/api/admin/log", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "admin_login",
+          actor: email,
+          details: "Superadmin login successful",
+        }),
+      });
+    } catch {
+      setError("Unable to reach admin auth service.");
     }
   };
 
-  const handleSaveAd = () => {
+  const handleSaveAd = async () => {
     updateAdConfig(newAdConfig);
+    if (adminEmail) {
+      await fetch("/api/admin/log", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "ad_update",
+          actor: adminEmail,
+          details: `Updated banner to ${newAdConfig.targetUrl}`,
+        }),
+      });
+    }
   };
+
+  const handleLogout = async () => {
+    await fetch("/api/admin/logout", { method: "POST" });
+    if (adminEmail) {
+      await fetch("/api/admin/log", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "admin_logout",
+          actor: adminEmail,
+          details: "Superadmin logout",
+        }),
+      });
+    }
+    setIsAuthenticated(false);
+  };
+
+  useEffect(() => {
+    let mounted = true;
+    fetch("/api/admin/me")
+      .then((res) => res.json())
+      .then((data) => {
+        if (!mounted) return;
+        setIsAuthenticated(Boolean(data?.authenticated));
+      })
+      .catch(() => {
+        if (!mounted) return;
+        setIsAuthenticated(false);
+      })
+      .finally(() => {
+        if (!mounted) return;
+        setChecking(false);
+      });
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    const stored = window.localStorage.getItem("jobhaven-admin-email");
+    if (stored) {
+      setAdminEmail(stored);
+    }
+  }, []);
+
+  if (checking) {
+    return (
+      <div className="min-h-screen bg-muted/30">
+        <SEOHead title="SuperAdmin Access — Restricted" canonicalPath="/superadmin007" noIndex />
+        <Header />
+        <main id="main-content" className="mx-auto max-w-md px-4 py-24 text-center text-muted-foreground">
+          Checking access...
+        </main>
+      </div>
+    );
+  }
 
   if (!isAuthenticated) {
     return (
       <div className="min-h-screen bg-muted/30">
+      <SEOHead title="SuperAdmin Access — Restricted" canonicalPath="/superadmin007" noIndex />
         <Header />
-        <main className="mx-auto max-w-md px-4 py-24">
+        <main id="main-content" className="mx-auto max-w-md px-4 py-24">
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
@@ -118,8 +201,9 @@ export default function SuperAdmin() {
 
   return (
     <div className="min-h-screen bg-muted/30">
+      <SEOHead title="SuperAdmin Dashboard — JobHaven" canonicalPath="/superadmin007" noIndex />
       <Header />
-      <main className="mx-auto max-w-6xl px-4 py-12">
+      <main id="main-content" className="mx-auto max-w-6xl px-4 py-12">
         <div className="flex items-center justify-between mb-8">
           <div className="flex items-center gap-3">
             <div className="h-10 w-10 rounded-xl bg-destructive/10 flex items-center justify-center text-destructive">
@@ -130,7 +214,7 @@ export default function SuperAdmin() {
               <p className="text-sm text-muted-foreground italic">Restricted Internal Panel — Not Indexed</p>
             </div>
           </div>
-          <Button variant="outline" size="sm" onClick={() => setIsAuthenticated(false)}>
+          <Button variant="outline" size="sm" onClick={handleLogout}>
             Sign Out
           </Button>
         </div>
@@ -144,6 +228,14 @@ export default function SuperAdmin() {
             <TabsTrigger value="advertising" className="rounded-lg gap-2">
               <Image className="h-4 w-4" />
               Advertising
+            </TabsTrigger>
+            <TabsTrigger value="submissions" className="rounded-lg gap-2">
+              <Megaphone className="h-4 w-4" />
+              Job Submissions
+            </TabsTrigger>
+            <TabsTrigger value="analytics" className="rounded-lg gap-2">
+              <Sparkles className="h-4 w-4" />
+              Analytics
             </TabsTrigger>
           </TabsList>
 
@@ -161,7 +253,7 @@ export default function SuperAdmin() {
                         <TableHead>Name</TableHead>
                         <TableHead>Email</TableHead>
                         <TableHead>Auth Provider</TableHead>
-                        <TableHead className="text-right">Saved Jobs</TableHead>
+                        <TableHead>LinkedIn</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -170,7 +262,7 @@ export default function SuperAdmin() {
                           <TableCell className="font-medium">{c.name}</TableCell>
                           <TableCell>{c.email}</TableCell>
                           <TableCell className="capitalize">{c.provider}</TableCell>
-                          <TableCell className="text-right">{c.savedJobs}</TableCell>
+                          <TableCell>{c.linkedin}</TableCell>
                         </TableRow>
                       ))}
                     </TableBody>
@@ -237,6 +329,106 @@ export default function SuperAdmin() {
                 </CardContent>
               </Card>
             </div>
+          </TabsContent>
+
+          <TabsContent value="submissions">
+            <Card className="rounded-2xl border bg-card shadow-sm">
+              <CardHeader>
+                <CardTitle>Employer Job Submissions</CardTitle>
+                <CardDescription>Review and promote approved roles to Featured Jobs.</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="rounded-xl border overflow-hidden">
+                  <Table>
+                    <TableHeader className="bg-muted/50">
+                      <TableRow>
+                        <TableHead>Role</TableHead>
+                        <TableHead>Company</TableHead>
+                        <TableHead>Country</TableHead>
+                        <TableHead>Poster</TableHead>
+                        <TableHead className="text-right">Actions</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {jobSubmissions.map((submission) => (
+                        <TableRow key={submission.id}>
+                          <TableCell className="font-medium">{submission.title}</TableCell>
+                          <TableCell>{submission.company}</TableCell>
+                          <TableCell>{submission.country}</TableCell>
+                          <TableCell>
+                            <div className="text-sm">{submission.posterName}</div>
+                            <div className="text-xs text-muted-foreground">{submission.posterEmail}</div>
+                            <div className="text-xs text-muted-foreground">{submission.posterTelegram}</div>
+                          </TableCell>
+                          <TableCell className="text-right">
+                            <Button
+                              size="sm"
+                              onClick={async () => {
+                                publishSubmission(submission.id, true);
+                                if (adminEmail) {
+                                  await fetch("/api/admin/log", {
+                                    method: "POST",
+                                    headers: { "Content-Type": "application/json" },
+                                    body: JSON.stringify({
+                                      action: "submission_promoted",
+                                      actor: adminEmail,
+                                      details: `Promoted ${submission.title} at ${submission.company} to featured`,
+                                    }),
+                                  });
+                                }
+                              }}
+                            >
+                              Post as Featured
+                            </Button>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                      {jobSubmissions.length === 0 && (
+                        <TableRow>
+                          <TableCell colSpan={5} className="text-center text-sm text-muted-foreground py-8">
+                            No pending submissions yet.
+                          </TableCell>
+                        </TableRow>
+                      )}
+                    </TableBody>
+                  </Table>
+                </div>
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          <TabsContent value="analytics">
+            <Card className="rounded-2xl border bg-card shadow-sm">
+              <CardHeader>
+                <CardTitle>Google Analytics</CardTitle>
+                <CardDescription>Connect a GA4 Measurement ID to enable tracking.</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <Input
+                  placeholder="G-XXXXXXXXXX"
+                  value={gaInput}
+                  onChange={(e) => setGaInput(e.target.value)}
+                />
+                <Button
+                  onClick={async () => {
+                    setAnalyticsId(gaInput);
+                    if (adminEmail) {
+                      await fetch("/api/admin/log", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({
+                          action: "analytics_update",
+                          actor: adminEmail,
+                          details: `GA measurement ID set to ${gaInput}`,
+                        }),
+                      });
+                    }
+                  }}
+                >
+                  Save Measurement ID
+                </Button>
+              </CardContent>
+            </Card>
           </TabsContent>
         </Tabs>
       </main>

@@ -1,4 +1,4 @@
-import { useEffect, useMemo } from "react";
+import { useMemo } from "react";
 import { Link, useLocation } from "wouter";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -7,15 +7,12 @@ import { Separator } from "@/components/ui/separator";
 import { useJobsStore } from "@/state/jobs-store";
 import { useSessionStore } from "@/state/session-store";
 import { ArrowLeft, Bookmark, Lock } from "lucide-react";
+import { SEOHead } from "./home";
 
 export default function SavedJobs() {
   const [, navigate] = useLocation();
   const { user } = useSessionStore();
   const { savedIds, jobsById } = useJobsStore();
-
-  useEffect(() => {
-    document.title = "JobHaven — Saved";
-  }, []);
 
   const savedJobs = useMemo(() => {
     return Array.from(savedIds)
@@ -26,6 +23,7 @@ export default function SavedJobs() {
   if (!user) {
     return (
       <div className="min-h-screen">
+        <SEOHead title="Saved Jobs — JobHaven" description="Sign in to view and manage your saved jobs." canonicalPath="/saved" />
         <div className="mx-auto max-w-3xl px-4 py-10">
           <Card className="rounded-3xl border bg-card p-7 shadow-md" data-testid="card-auth-required">
             <div className="flex items-center gap-2 text-sm text-muted-foreground">
@@ -53,7 +51,11 @@ export default function SavedJobs() {
 
   return (
     <div className="min-h-screen">
+      <SEOHead title="Saved Jobs — JobHaven" description="Manage your shortlisted Web3 and blockchain roles." canonicalPath="/saved" />
       <header className="sticky top-0 z-30 border-b bg-background/70 backdrop-blur supports-[backdrop-filter]:bg-background/60">
+        <a href="#main-content" className="skip-link">
+          Skip to main content
+        </a>
         <div className="mx-auto flex max-w-6xl items-center justify-between gap-3 px-4 py-3">
           <Link href="/">
             <a className="inline-flex items-center gap-2 text-sm" data-testid="link-back-home">
@@ -74,7 +76,7 @@ export default function SavedJobs() {
         </div>
       </header>
 
-      <main className="mx-auto max-w-6xl px-4 pb-14 pt-8">
+      <main id="main-content" className="mx-auto max-w-6xl px-4 pb-14 pt-8">
         <div className="flex items-end justify-between">
           <div>
             <h1 className="font-serif text-3xl tracking-tight">Your shortlist</h1>

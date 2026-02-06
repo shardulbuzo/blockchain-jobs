@@ -5,10 +5,13 @@ import {
   ArrowRight,
   Bookmark,
   Building2,
+  Plus,
   Globe,
   MapPin,
+  Moon,
   Search,
   Sparkles,
+  Sun,
   Tag,
   Twitter,
   Linkedin,
@@ -17,6 +20,15 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import {
   Select,
@@ -26,11 +38,39 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
+import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 import { useJobsStore } from "@/state/jobs-store";
 import { useSessionStore } from "@/state/session-store";
 
-export function SEOHead({ title, description, jobData }: { title?: string; description?: string; jobData?: { title: string; company: string; location: string } }) {
+type StructuredData = Record<string, unknown> | Array<Record<string, unknown>>;
+
+function upsertMeta(selector: string, create: () => HTMLMetaElement, content: string) {
+  let meta = document.head.querySelector(selector) as HTMLMetaElement | null;
+  if (!meta) {
+    meta = create();
+    document.head.appendChild(meta);
+  }
+  meta.setAttribute("content", content);
+}
+
+export function SEOHead({
+  title,
+  description,
+  jobData,
+  canonicalPath,
+  noIndex = false,
+  structuredData,
+  keywords,
+}: {
+  title?: string;
+  description?: string;
+  jobData?: { title: string; company: string; location: string };
+  canonicalPath?: string;
+  noIndex?: boolean;
+  structuredData?: StructuredData;
+  keywords?: string[];
+}) {
   const finalTitle = jobData 
     ? `Web3 and Blockchain jobs : ${jobData.title} job at ${jobData.company} at ${jobData.location}`
     : title || "JobHaven — Web3 & Blockchain Jobs";
@@ -39,21 +79,93 @@ export function SEOHead({ title, description, jobData }: { title?: string; descr
 
   useEffect(() => {
     document.title = finalTitle;
-    
-    // Update meta tags for social media
-    const ogTitle = document.querySelector('meta[property="og:title"]');
-    if (ogTitle) ogTitle.setAttribute("content", finalTitle);
-    
-    const ogDesc = document.querySelector('meta[property="og:description"]');
-    if (ogDesc) ogDesc.setAttribute("content", finalDescription);
+    const url = new URL(canonicalPath || window.location.pathname, window.location.origin).toString();
+    const imageUrl = new URL("/opengraph.jpg", window.location.origin).toString();
 
-    // Mock OG image generation (visual representation in code)
-    const ogImage = document.querySelector('meta[property="og:image"]');
-    if (ogImage && jobData) {
-      // In a real app, this would be a dynamic image generator URL
-      // ogImage.setAttribute("content", `https://api.jobhaven.com/og?title=${encodeURIComponent(jobData.title)}&company=${encodeURIComponent(jobData.company)}&location=${encodeURIComponent(jobData.location)}`);
+    upsertMeta('meta[name="description"]', () => {
+      const meta = document.createElement("meta");
+      meta.name = "description";
+      return meta;
+    }, finalDescription);
+
+    upsertMeta('meta[property="og:title"]', () => {
+      const meta = document.createElement("meta");
+      meta.setAttribute("property", "og:title");
+      return meta;
+    }, finalTitle);
+
+    upsertMeta('meta[property="og:description"]', () => {
+      const meta = document.createElement("meta");
+      meta.setAttribute("property", "og:description");
+      return meta;
+    }, finalDescription);
+
+    upsertMeta('meta[property="og:url"]', () => {
+      const meta = document.createElement("meta");
+      meta.setAttribute("property", "og:url");
+      return meta;
+    }, url);
+
+    upsertMeta('meta[property="og:image"]', () => {
+      const meta = document.createElement("meta");
+      meta.setAttribute("property", "og:image");
+      return meta;
+    }, imageUrl);
+
+    upsertMeta('meta[name="twitter:title"]', () => {
+      const meta = document.createElement("meta");
+      meta.name = "twitter:title";
+      return meta;
+    }, finalTitle);
+
+    upsertMeta('meta[name="twitter:description"]', () => {
+      const meta = document.createElement("meta");
+      meta.name = "twitter:description";
+      return meta;
+    }, finalDescription);
+
+    upsertMeta('meta[name="twitter:image"]', () => {
+      const meta = document.createElement("meta");
+      meta.name = "twitter:image";
+      return meta;
+    }, imageUrl);
+
+    upsertMeta('meta[name="robots"]', () => {
+      const meta = document.createElement("meta");
+      meta.name = "robots";
+      return meta;
+    }, noIndex ? "noindex, nofollow" : "index, follow, max-image-preview:large");
+
+    if (keywords?.length) {
+      upsertMeta('meta[name="keywords"]', () => {
+        const meta = document.createElement("meta");
+        meta.name = "keywords";
+        return meta;
+      }, keywords.join(", "));
     }
-  }, [finalTitle, finalDescription, jobData]);
+
+    let canonical = document.head.querySelector('link[rel="canonical"]') as HTMLLinkElement | null;
+    if (!canonical) {
+      canonical = document.createElement("link");
+      canonical.rel = "canonical";
+      document.head.appendChild(canonical);
+    }
+    canonical.href = url;
+
+    const scriptId = "seo-structured-data";
+    const previousScript = document.getElementById(scriptId);
+    if (structuredData) {
+      const script = previousScript || document.createElement("script");
+      script.id = scriptId;
+      script.setAttribute("type", "application/ld+json");
+      script.textContent = JSON.stringify(structuredData);
+      if (!previousScript) {
+        document.head.appendChild(script);
+      }
+    } else if (previousScript) {
+      previousScript.remove();
+    }
+  }, [canonicalPath, finalDescription, finalTitle, noIndex, structuredData]);
 
   return null;
 }
@@ -73,11 +185,87 @@ export function AdBanner() {
 export function Header() {
   const [location, navigate] = useLocation();
   const { user } = useSessionStore();
-  const { savedIds } = useJobsStore();
+  const { savedIds, submitJob } = useJobsStore();
+  const [theme, setTheme] = useState<"light" | "dark">("light");
+  const [open, setOpen] = useState(false);
+  const [jobForm, setJobForm] = useState({
+    title: "",
+    description: "",
+    country: "",
+    link: "",
+    category: "",
+    company: "",
+    logo: "",
+    tags: "",
+    remote: "",
+    sector: "",
+    posterName: "",
+    posterEmail: "",
+    posterTelegram: "",
+  });
+
+  useEffect(() => {
+    const stored = window.localStorage.getItem("jobhaven-theme");
+    const prefersDark = window.matchMedia?.("(prefers-color-scheme: dark)")?.matches;
+    const next = stored === "dark" || (!stored && prefersDark) ? "dark" : "light";
+    setTheme(next);
+    document.documentElement.classList.toggle("dark", next === "dark");
+  }, []);
+
+  const toggleTheme = () => {
+    const next = theme === "dark" ? "light" : "dark";
+    setTheme(next);
+    document.documentElement.classList.toggle("dark", next === "dark");
+    window.localStorage.setItem("jobhaven-theme", next);
+  };
+
+  const handleSubmitJob = (e: React.FormEvent) => {
+    e.preventDefault();
+    const tags = jobForm.tags
+      .split(/[,;|]/)
+      .map((t) => t.trim())
+      .filter(Boolean);
+    submitJob({
+      id: `sub-${Date.now()}`,
+      title: jobForm.title,
+      description: jobForm.description,
+      country: jobForm.country,
+      link: jobForm.link,
+      category: jobForm.category,
+      company: jobForm.company,
+      logo: jobForm.logo,
+      tags,
+      additionDate: new Date().toISOString().slice(0, 10),
+      remote: jobForm.remote,
+      sector: jobForm.sector,
+      posterName: jobForm.posterName,
+      posterEmail: jobForm.posterEmail,
+      posterTelegram: jobForm.posterTelegram,
+    });
+    setOpen(false);
+    setJobForm({
+      title: "",
+      description: "",
+      country: "",
+      link: "",
+      category: "",
+      company: "",
+      logo: "",
+      tags: "",
+      remote: "",
+      sector: "",
+      posterName: "",
+      posterEmail: "",
+      posterTelegram: "",
+    });
+  };
 
   return (
     <header className="sticky top-0 z-30 border-b bg-background/70 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-      <div className="mx-auto max-w-6xl px-4 py-3">
+      <a href="#main-content" className="skip-link">
+        Skip to main content
+      </a>
+      <div className="mx-auto w-full px-4 py-3">
         <div className="flex items-center justify-between gap-3">
           <Link href="/">
             <a
@@ -92,38 +280,108 @@ export function Header() {
             </a>
           </Link>
 
-          <nav className="hidden md:flex items-center gap-6 text-sm font-medium">
+          <nav className="hidden md:flex items-center gap-6 text-sm font-medium" aria-label="Primary">
              <Link href="/">
-               <a className={cn("transition hover:text-primary", location === "/" ? "text-primary" : "text-muted-foreground")}>Jobs</a>
+               <a className={cn("transition hover:text-primary", location === "/" ? "text-primary" : "text-muted-foreground")} aria-current={location === "/" ? "page" : undefined}>Jobs</a>
              </Link>
              <Link href="/companies">
-               <a className={cn("transition hover:text-primary", location === "/companies" ? "text-primary" : "text-muted-foreground")}>Companies</a>
+               <a className={cn("transition hover:text-primary", location === "/companies" ? "text-primary" : "text-muted-foreground")} aria-current={location === "/companies" ? "page" : undefined}>Companies</a>
              </Link>
           </nav>
 
           <div className="flex items-center gap-2">
             <Button
               variant="secondary"
+              size="icon"
               className="hidden sm:inline-flex"
               onClick={() => navigate("/saved")}
+              aria-label="Saved jobs"
               data-testid="button-saved"
             >
-              <Bookmark className="mr-2 h-4 w-4" />
-              Saved
-              <span
-                className="ml-2 rounded-full bg-background px-2 py-0.5 text-xs text-muted-foreground ring-1 ring-border"
-                data-testid="text-saved-count"
-              >
-                {savedIds.size}
+              <Bookmark className="h-4 w-4" />
+              <span className="sr-only">Saved</span>
+              {savedIds.size > 0 && (
+                <sup className="ml-1 text-[10px] font-semibold text-emerald-500">
+                  {savedIds.size}
+                </sup>
+              )}
+            </Button>
+            <div className="hidden md:flex items-center gap-3 px-2">
+              <a href="https://twitter.com" target="_blank" rel="noreferrer" aria-label="Visit JobHaven on X">
+                <Twitter className="h-4 w-4 text-muted-foreground hover:text-primary transition-colors" />
+              </a>
+              <a href="https://www.linkedin.com" target="_blank" rel="noreferrer" aria-label="Visit JobHaven on LinkedIn">
+                <Linkedin className="h-4 w-4 text-muted-foreground hover:text-primary transition-colors" />
+              </a>
+              <a href="https://github.com" target="_blank" rel="noreferrer" aria-label="Visit JobHaven on GitHub">
+                <Github className="h-4 w-4 text-muted-foreground hover:text-primary transition-colors" />
+              </a>
+            </div>
+            <Button
+              variant="secondary"
+              size="icon"
+              className="hidden sm:inline-flex overflow-hidden"
+              onClick={toggleTheme}
+              aria-label="Toggle dark mode"
+              data-testid="button-theme"
+            >
+              <span className={cn("transition-transform duration-300", theme === "dark" ? "rotate-0" : "-rotate-90")}>
+                {theme === "dark" ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
               </span>
             </Button>
             <Button
+              variant="secondary"
               onClick={() => navigate(user ? "/saved" : "/auth")}
               data-testid="button-auth"
             >
               {user ? "Account" : "Sign in"}
               <ArrowRight className="ml-2 h-4 w-4" />
             </Button>
+            <Dialog open={open} onOpenChange={setOpen}>
+              <DialogTrigger asChild>
+                <Button className="hidden lg:inline-flex shadow-sm" data-testid="button-post-job">
+                  <Plus className="mr-2 h-4 w-4" />
+                  Post a job
+                </Button>
+              </DialogTrigger>
+              <DialogContent className="max-w-2xl">
+                <DialogHeader>
+                  <DialogTitle>Post a Job</DialogTitle>
+                  <DialogDescription>
+                    Share role details and your contact info. Submissions appear in SuperAdmin for approval.
+                  </DialogDescription>
+                </DialogHeader>
+                <form onSubmit={handleSubmitJob} className="grid gap-4">
+                  <div className="grid gap-3 md:grid-cols-2">
+                    <Input placeholder="Job title" value={jobForm.title} onChange={(e) => setJobForm({ ...jobForm, title: e.target.value })} required />
+                    <Input placeholder="Company" value={jobForm.company} onChange={(e) => setJobForm({ ...jobForm, company: e.target.value })} required />
+                    <Input placeholder="Country" value={jobForm.country} onChange={(e) => setJobForm({ ...jobForm, country: e.target.value })} required />
+                    <Input placeholder="Category" value={jobForm.category} onChange={(e) => setJobForm({ ...jobForm, category: e.target.value })} required />
+                    <Input placeholder="Sector" value={jobForm.sector} onChange={(e) => setJobForm({ ...jobForm, sector: e.target.value })} />
+                    <Input placeholder="Remote / Hybrid / On-site" value={jobForm.remote} onChange={(e) => setJobForm({ ...jobForm, remote: e.target.value })} />
+                    <Input placeholder="Apply link" value={jobForm.link} onChange={(e) => setJobForm({ ...jobForm, link: e.target.value })} required />
+                    <Input placeholder="Company logo URL" value={jobForm.logo} onChange={(e) => setJobForm({ ...jobForm, logo: e.target.value })} />
+                  </div>
+                  <Textarea
+                    placeholder="Job description (HTML supported)"
+                    value={jobForm.description}
+                    onChange={(e) => setJobForm({ ...jobForm, description: e.target.value })}
+                    className="min-h-[160px]"
+                    required
+                  />
+                  <Input placeholder="Tags (comma separated)" value={jobForm.tags} onChange={(e) => setJobForm({ ...jobForm, tags: e.target.value })} />
+                  <Separator />
+                  <div className="grid gap-3 md:grid-cols-3">
+                    <Input placeholder="Your name" value={jobForm.posterName} onChange={(e) => setJobForm({ ...jobForm, posterName: e.target.value })} required />
+                    <Input type="email" placeholder="Email" value={jobForm.posterEmail} onChange={(e) => setJobForm({ ...jobForm, posterEmail: e.target.value })} required />
+                    <Input placeholder="Telegram ID" value={jobForm.posterTelegram} onChange={(e) => setJobForm({ ...jobForm, posterTelegram: e.target.value })} required />
+                  </div>
+                  <DialogFooter>
+                    <Button type="submit">Submit job</Button>
+                  </DialogFooter>
+                </form>
+              </DialogContent>
+            </Dialog>
           </div>
         </div>
       </div>
@@ -140,17 +398,6 @@ function Hero({ total }: { total: number }) {
 
       <div className="grain relative mx-auto max-w-6xl px-4 py-10 sm:py-14">
         <div className="flex flex-col gap-6">
-          <div className="inline-flex items-center gap-2 self-start rounded-full border bg-card/60 px-3 py-1 text-xs text-muted-foreground shadow-sm">
-            <Sparkles className="h-3.5 w-3.5 text-primary" />
-            AI-optimized Web3 Job Board
-            <span
-              className="rounded-full bg-primary/10 px-2 py-0.5 text-primary"
-              data-testid="text-total-roles"
-            >
-              {total} roles
-            </span>
-          </div>
-
           <div className="max-w-3xl">
             <h1 className="font-serif text-4xl leading-[1.04] tracking-tight sm:text-5xl">
               Curated Web3 & Blockchain jobs — built for the next generation of builders.
@@ -196,11 +443,6 @@ export function Footer({ categories, locations }: { categories: string[]; locati
             <p className="mt-4 text-sm text-muted-foreground leading-relaxed">
               The premier destination for Web3 jobs and Blockchain jobs. We connect talented professionals with leading crypto companies worldwide. Find your next high-impact role in the decentralized future.
             </p>
-            <div className="mt-6 flex gap-4">
-              <Twitter className="h-5 w-5 text-muted-foreground hover:text-primary cursor-pointer transition-colors" />
-              <Linkedin className="h-5 w-5 text-muted-foreground hover:text-primary cursor-pointer transition-colors" />
-              <Github className="h-5 w-5 text-muted-foreground hover:text-primary cursor-pointer transition-colors" />
-            </div>
           </div>
 
           <div className="lg:col-span-4">
@@ -246,6 +488,7 @@ type Filters = {
   category: string;
   location: string;
   remote: string;
+  sector: string;
 };
 
 function FiltersBar({
@@ -253,14 +496,16 @@ function FiltersBar({
   setFilters,
   categories,
   locations,
+  sectors,
 }: {
   filters: Filters;
   setFilters: (v: Filters) => void;
   categories: string[];
   locations: string[];
+  sectors: string[];
 }) {
   return (
-    <Card className="mx-auto max-w-6xl border bg-card/80 p-4 shadow-sm backdrop-blur">
+    <Card className="mx-auto max-w-6xl border bg-card/80 p-4 shadow-sm backdrop-blur" role="search" aria-label="Filter jobs">
       <div className="grid gap-3 md:grid-cols-12 md:items-center">
         <div className="md:col-span-6">
           <div className="relative">
@@ -271,6 +516,7 @@ function FiltersBar({
               value={filters.q}
               onChange={(e) => setFilters({ ...filters, q: e.target.value })}
               className="pl-9"
+              aria-label="Search jobs"
               data-testid="input-search"
             />
           </div>
@@ -281,7 +527,7 @@ function FiltersBar({
             value={filters.location}
             onValueChange={(v) => setFilters({ ...filters, location: v })}
           >
-            <SelectTrigger data-testid="select-location">
+            <SelectTrigger aria-label="Filter by country" data-testid="select-location">
               <SelectValue placeholder="Country" />
             </SelectTrigger>
             <SelectContent>
@@ -300,7 +546,7 @@ function FiltersBar({
             value={filters.remote}
             onValueChange={(v) => setFilters({ ...filters, remote: v })}
           >
-            <SelectTrigger data-testid="select-remote">
+            <SelectTrigger aria-label="Filter by remote type" data-testid="select-remote">
               <SelectValue placeholder="Remote" />
             </SelectTrigger>
             <SelectContent>
@@ -322,6 +568,7 @@ function FiltersBar({
                 category: "all",
                 location: "all",
                 remote: "all",
+                sector: "all",
               })
             }
             data-testid="button-clear-filters"
@@ -351,6 +598,29 @@ function FiltersBar({
                 data-testid={`button-cat-${c.toLowerCase().replace(/\s+/g, "-")}`}
               >
                 {c}
+              </Button>
+            ))}
+          </div>
+
+          <div className="mt-4 flex flex-wrap items-center gap-2">
+            <div className="text-xs text-muted-foreground">Sectors:</div>
+            <Button
+              variant={filters.sector === "all" ? "default" : "secondary"}
+              size="sm"
+              onClick={() => setFilters({ ...filters, sector: "all" })}
+              data-testid="button-sector-all"
+            >
+              All Sectors
+            </Button>
+            {sectors.slice(0, 8).map((sector) => (
+              <Button
+                key={sector}
+                variant={filters.sector === sector ? "default" : "secondary"}
+                size="sm"
+                onClick={() => setFilters({ ...filters, sector })}
+                data-testid={`button-sector-${sector.toLowerCase().replace(/\s+/g, "-")}`}
+              >
+                {sector}
               </Button>
             ))}
           </div>
@@ -447,6 +717,15 @@ export function JobRow({ id }: { id: string }) {
                     {t}
                   </Badge>
                 ))}
+                {job.sector && (
+                  <Badge
+                    variant="secondary"
+                    className="rounded-full border border-primary/20 bg-primary/5 text-primary"
+                    data-testid={`badge-sector-${id}`}
+                  >
+                    {job.sector}
+                  </Badge>
+                )}
                 {job.remote !== "" && (
                   <Badge
                     className="rounded-full bg-accent/10 text-accent hover:bg-accent/10"
@@ -472,6 +751,7 @@ export function JobRow({ id }: { id: string }) {
               toggleSaved(id);
             }}
             aria-label={saved ? "Unsave" : "Save"}
+            aria-pressed={saved}
             data-testid={`button-save-${id}`}
           >
             <Bookmark className={cn("h-4 w-4", saved && "fill-current")} />
@@ -483,12 +763,13 @@ export function JobRow({ id }: { id: string }) {
 }
 
 export default function Home() {
-  const { jobIds, categories, locations, jobsById } = useJobsStore();
+  const { jobIds, categories, locations, jobsById, sectors } = useJobsStore();
   const [filters, setFilters] = useState<Filters>({
     q: "",
     category: "all",
     location: "all",
     remote: "all",
+    sector: "all",
   });
 
   const filtered = useMemo(() => {
@@ -505,7 +786,8 @@ export default function Home() {
           j.company.toLowerCase().includes(q) ||
           j.category.toLowerCase().includes(q) ||
           j.location.toLowerCase().includes(q) ||
-          j.tags.join(" ").toLowerCase().includes(q)
+          j.tags.join(" ").toLowerCase().includes(q) ||
+          (j.sector || "").toLowerCase().includes(q)
         )
       ) {
         return false;
@@ -513,6 +795,7 @@ export default function Home() {
 
       if (filters.category !== "all" && j.category !== filters.category) return false;
       if (filters.location !== "all" && j.location !== filters.location) return false;
+      if (filters.sector !== "all" && (j.sector || "") !== filters.sector) return false;
 
       if (filters.remote !== "all") {
         const r = j.remote.toLowerCase();
@@ -526,28 +809,88 @@ export default function Home() {
     });
   }, [jobIds, filters, jobsById]);
 
+  const featured = useMemo(
+    () => filtered.filter((id) => jobsById[id]?.featured),
+    [filtered, jobsById],
+  );
+
+  const homeStructuredData = useMemo(
+    () => ({
+      "@context": "https://schema.org",
+      "@type": "WebSite",
+      name: "JobHaven",
+      url: window.location.origin,
+      description: "Curated Web3 and blockchain jobs with fast filtering by location, category, and remote type.",
+      potentialAction: {
+        "@type": "SearchAction",
+        target: `${window.location.origin}/?q={search_term_string}`,
+        "query-input": "required name=search_term_string",
+      },
+    }),
+    [],
+  );
+
   return (
     <div className="min-h-screen">
-      <SEOHead title="JobHaven — Web3 & Blockchain Jobs" description="Curated list of the best Web3 and blockchain opportunities." />
+      <SEOHead
+        title="JobHaven — Web3 & Blockchain Jobs"
+        description="AI-optimized job board for Web3, blockchain, crypto, DeFi, and fintech roles. Browse verified jobs, featured roles, and companies hiring worldwide."
+        canonicalPath="/"
+        structuredData={homeStructuredData}
+        keywords={[
+          "web3 jobs",
+          "blockchain jobs",
+          "crypto jobs",
+          "defi jobs",
+          "fintech jobs",
+          "smart contract jobs",
+          "remote web3 jobs",
+          "web3 companies hiring",
+        ]}
+      />
       <Header />
       <Hero total={jobIds.length} />
 
-      <main className="mx-auto max-w-6xl px-4">
+      <main id="main-content" className="mx-auto max-w-6xl px-4">
         <div className="-mt-8 sm:-mt-10">
           <FiltersBar
             filters={filters}
             setFilters={setFilters}
             categories={categories}
             locations={locations}
+            sectors={sectors}
           />
         </div>
 
         <AdBanner />
 
+        {featured.length > 0 && (
+          <section className="mt-8">
+            <div className="flex items-center justify-between">
+              <div>
+                <h2 className="font-serif text-2xl tracking-tight">Featured roles</h2>
+                <p className="mt-1 text-sm text-muted-foreground">Handpicked roles from the Featured Jobs sheet.</p>
+              </div>
+            </div>
+            <div className="mt-4 grid gap-3">
+              {featured.slice(0, 6).map((id, idx) => (
+                <motion.div
+                  key={`featured-${id}`}
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.25, delay: Math.min(idx * 0.02, 0.25) }}
+                >
+                  <JobRow id={id} />
+                </motion.div>
+              ))}
+            </div>
+          </section>
+        )}
+
         <div className="mt-8 flex items-end justify-between">
           <div>
             <h2 className="font-serif text-2xl tracking-tight">Latest Web3 roles</h2>
-            <p className="mt-1 text-sm text-muted-foreground" data-testid="text-results">
+            <p className="mt-1 text-sm text-muted-foreground" data-testid="text-results" aria-live="polite">
               Showing <span className="font-medium text-foreground">{filtered.length}</span> blockchain jobs
             </p>
           </div>
@@ -574,13 +917,14 @@ export default function Home() {
                   <Button
                     variant="secondary"
                     onClick={() =>
-                      setFilters({
-                        q: "",
-                        category: "all",
-                        location: "all",
-                        remote: "all",
-                      })
-                    }
+                    setFilters({
+                      q: "",
+                      category: "all",
+                      location: "all",
+                      remote: "all",
+                      sector: "all",
+                    })
+                  }
                     data-testid="button-clear-empty"
                   >
                     Clear filters

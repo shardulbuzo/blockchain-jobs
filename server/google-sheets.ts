@@ -1,0 +1,193 @@
+import { google } from "googleapis";
+
+type SheetData = {
+  headers: string[];
+  rows: string[][];
+};
+
+type CompanyRow = {
+  name: string;
+  url?: string;
+  linkedin?: string;
+  twitter?: string;
+  logo?: string;
+  ats?: string;
+  sector?: string;
+};
+
+type CacheEntry = {
+  jobs: any[];
+  companies: CompanyRow[];
+  expiresAt: number;
+};
+
+const CACHE_TTL_MS = 5 * 60 * 1000;
+let cache: CacheEntry | null = null;
+
+function normalizeHeader(value: string) {
+  return value.trim().toLowerCase();
+}
+
+function headerIndex(headers: string[]) {
+  const map: Record<string, number> = {};
+  headers.forEach((h, idx) => {
+    map[normalizeHeader(h)] = idx;
+  });
+  return map;
+}
+
+function getCell(row: string[], indexMap: Record<string, number>, key: string) {
+  const idx = indexMap[normalizeHeader(key)];
+  if (idx === undefined) return "";
+  return row[idx]?.trim?.() ?? "";
+}
+
+function parseTags(value: string) {
+  if (!value) return [];
+  return value
+    .split(/[,;|]/)
+    .map((tag) => tag.trim())
+    .filter(Boolean);
+}
+
+function parseCredentials() {
+  const raw =
+    process.env.GOOGLE_SHEETS_CREDENTIALS ||
+    process.env.GOOGLE_SHEETS_CREDENTIALS_B64 ||
+    "";
+  if (!raw) {
+    throw new Error("Missing GOOGLE_SHEETS_CREDENTIALS or GOOGLE_SHEETS_CREDENTIALS_B64.");
+  }
+  if (raw.trim().startsWith("{")) {
+    try {
+      return JSON.parse(raw);
+    } catch {
+      // Some envs store newlines literally; escape them and retry.
+      const repaired = raw.replace(/\n/g, "\\n");
+      return JSON.parse(repaired);
+    }
+  }
+  const decoded = Buffer.from(raw, "base64").toString("utf-8");
+  return JSON.parse(decoded);
+}
+
+async function getSheetData(sheetName: string): Promise<SheetData> {
+  const spreadsheetId = process.env.GOOGLE_SHEET_ID;
+  if (!spreadsheetId) {
+    throw new Error("Missing GOOGLE_SHEET_ID.");
+  }
+
+  const credentials = parseCredentials();
+  const auth = new google.auth.GoogleAuth({
+    credentials,
+    scopes: ["https://www.googleapis.com/auth/spreadsheets"],
+  });
+
+  const sheets = google.sheets({ version: "v4", auth });
+  const range = `${sheetName}!A1:Z10000`;
+  const response = await sheets.spreadsheets.values.get({
+    spreadsheetId,
+    range,
+  });
+  const values = response.data.values || [];
+  const [headers = [], ...rows] = values;
+  return {
+    headers: headers.map((h) => (h ?? "").toString()),
+    rows: rows.map((row) => row.map((cell) => (cell ?? "").toString())),
+  };
+}
+
+export async function fetchJobsAndCompanies() {
+  if (cache && cache.expiresAt > Date.now()) {
+    return { jobs: cache.jobs, companies: cache.companies };
+  }
+
+  const jobsSheet = await getSheetData("Jobs");
+  const companiesSheet = await getSheetData("companies");
+  let featuredSheet: SheetData | null = null;
+  try {
+    featuredSheet = await getSheetData("Featured Jobs");
+  } catch {
+    featuredSheet = null;
+  }
+
+  const companyHeader = headerIndex(companiesSheet.headers);
+  const companies = companiesSheet.rows
+    .map((row) => {
+      const name = getCell(row, companyHeader, "Company Name");
+      if (!name) return null;
+      const company: CompanyRow = {
+        name,
+        url: getCell(row, companyHeader, "URL"),
+        linkedin: getCell(row, companyHeader, "Linkedin"),
+        twitter: getCell(row, companyHeader, "Twitter"),
+        logo: getCell(row, companyHeader, "Logo"),
+        ats: getCell(row, companyHeader, "ATS Page Link"),
+        sector: getCell(row, companyHeader, "Sector"),
+      };
+      return company;
+    })
+    .filter(Boolean) as CompanyRow[];
+
+  const companyByName = new Map(
+    companies.map((company) => [company.name.toLowerCase(), company]),
+  );
+
+  const featuredKey = new Set<string>();
+  if (featuredSheet) {
+    const featuredHeader = headerIndex(featuredSheet.headers);
+    featuredSheet.rows.forEach((row) => {
+      const title = getCell(row, featuredHeader, "Job title");
+      const companyName = getCell(row, featuredHeader, "Company");
+      if (!title || !companyName) return;
+      featuredKey.add(`${companyName.toLowerCase()}::${title.toLowerCase()}`);
+    });
+  }
+
+  const jobHeader = headerIndex(jobsSheet.headers);
+  const jobs = jobsSheet.rows
+    .map((row, idx) => {
+      const title = getCell(row, jobHeader, "Job title");
+      const companyName = getCell(row, jobHeader, "Company");
+      if (!title || !companyName) return null;
+      const company = companyByName.get(companyName.toLowerCase());
+      const rawLogo = getCell(row, jobHeader, "Logo");
+      const logo = rawLogo || company?.logo || "";
+      const tags = parseTags(getCell(row, jobHeader, "Tags"));
+      const sector = getCell(row, jobHeader, "Sector") || company?.sector || "";
+      const idBase = `${companyName}-${title}-${idx + 1}`
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, "-")
+        .replace(/^-+|-+$/g, "");
+
+      return {
+        id: idBase || `job-${idx + 1}`,
+        title,
+        description: getCell(row, jobHeader, "Job description"),
+        location: getCell(row, jobHeader, "Country") || getCell(row, jobHeader, "Location"),
+        link: getCell(row, jobHeader, "Link"),
+        category: getCell(row, jobHeader, "Category"),
+        company: companyName,
+        logo,
+        tags,
+        additionDate: getCell(row, jobHeader, "Addition date"),
+        country: getCell(row, jobHeader, "Country"),
+        remote: getCell(row, jobHeader, "Remote"),
+        sector,
+        companyUrl: company?.url || "",
+        companyTwitter: company?.twitter || "",
+        companyLinkedin: company?.linkedin || "",
+        companyAtsLink: company?.ats || "",
+        featured: featuredKey.has(`${companyName.toLowerCase()}::${title.toLowerCase()}`),
+      };
+    })
+    .filter(Boolean);
+
+  cache = {
+    jobs,
+    companies,
+    expiresAt: Date.now() + CACHE_TTL_MS,
+  };
+
+  return { jobs, companies };
+}

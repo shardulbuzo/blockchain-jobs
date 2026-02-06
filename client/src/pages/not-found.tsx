@@ -2,11 +2,13 @@ import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { ArrowLeft } from "lucide-react";
+import { SEOHead } from "./home";
 
 export default function NotFound() {
   return (
     <div className="min-h-screen bg-grid">
-      <div className="mx-auto max-w-lg px-4 py-14">
+      <SEOHead title="Page Not Found — JobHaven" canonicalPath="/404" noIndex />
+      <main id="main-content" className="mx-auto max-w-lg px-4 py-14">
         <Card className="rounded-3xl border bg-card p-8 shadow-md" data-testid="card-404">
           <div className="font-serif text-3xl tracking-tight" data-testid="text-404-title">
             Page not found
@@ -25,7 +27,7 @@ export default function NotFound() {
             </Button>
           </div>
         </Card>
-      </div>
+      </main>
     </div>
   );
 }

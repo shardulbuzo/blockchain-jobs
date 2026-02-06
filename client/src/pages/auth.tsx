@@ -1,10 +1,10 @@
-import { useEffect } from "react";
 import { useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { useSessionStore } from "@/state/session-store";
 import { Building2 } from "lucide-react";
+import { SEOHead } from "./home";
 
 function ProviderButton({
   label,
@@ -37,13 +37,10 @@ export default function Auth() {
   const [, navigate] = useLocation();
   const { user, signInMock, signOut } = useSessionStore();
 
-  useEffect(() => {
-    document.title = "JobHaven — Sign in";
-  }, []);
-
   return (
     <div className="min-h-screen">
-      <div className="mx-auto max-w-lg px-4 py-12">
+      <SEOHead title="Sign In — JobHaven" description="Sign in to save jobs and manage your shortlist." canonicalPath="/auth" />
+      <main id="main-content" className="mx-auto max-w-lg px-4 py-12">
         <Card className="rounded-3xl border bg-card p-7 shadow-md" data-testid="card-auth">
           <div className="font-serif text-3xl tracking-tight">Welcome</div>
           <p className="mt-2 text-sm text-muted-foreground">
@@ -65,7 +62,7 @@ export default function Auth() {
               <ProviderButton
                 label="Continue with LinkedIn"
                 onClick={() => {
-                  signInMock({ provider: "linkedin", name: "Alex Candidate", email: "alex@linkedin.com" });
+                  signInMock({ provider: "linkedin", name: "Alex Candidate", email: "alex@linkedin.com", linkedin: "https://www.linkedin.com/in/alex-candidate" });
                   navigate("/");
                 }}
                 testId="button-auth-linkedin"
@@ -103,7 +100,7 @@ export default function Auth() {
             This is a frontend-only prototype. When you share your Google Sheet link, we’ll swap the dummy data for live Sheet data.
           </p>
         </Card>
-      </div>
+      </main>
     </div>
   );
 }

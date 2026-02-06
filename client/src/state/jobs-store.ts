@@ -13,9 +13,22 @@ export type Job = {
   additionDate: string;
   country: string;
   remote: string;
+  sector?: string;
+  companyUrl?: string;
+  companyAtsLink?: string;
   featured?: boolean;
   companyTwitter?: string;
   companyLinkedin?: string;
+};
+
+export type Company = {
+  name: string;
+  url?: string;
+  linkedin?: string;
+  twitter?: string;
+  logo?: string;
+  ats?: string;
+  sector?: string;
 };
 
 const CATEGORIES = [
@@ -129,6 +142,24 @@ export type AdConfig = {
   targetUrl: string;
 };
 
+export type JobSubmission = {
+  id: string;
+  title: string;
+  description: string;
+  country: string;
+  link: string;
+  category: string;
+  company: string;
+  logo: string;
+  tags: string[];
+  additionDate: string;
+  remote: string;
+  sector: string;
+  posterName: string;
+  posterEmail: string;
+  posterTelegram: string;
+};
+
 export type JobsState = {
   jobsById: Record<string, Job>;
   jobIds: string[];
@@ -136,10 +167,21 @@ export type JobsState = {
   categories: string[];
   locations: string[];
   tags: string[];
+  sectors: string[];
+  companies: Company[];
+  companiesByName: Record<string, Company>;
   adConfig: AdConfig;
+  analyticsId: string;
+  jobSubmissions: JobSubmission[];
+  loaded: boolean;
   toggleSaved: (id: string) => void;
   clearSaved: () => void;
   updateAdConfig: (config: AdConfig) => void;
+  setJobs: (jobs: Job[]) => void;
+  setCompanies: (companies: Company[]) => void;
+  setAnalyticsId: (id: string) => void;
+  submitJob: (submission: JobSubmission) => void;
+  publishSubmission: (id: string, featured?: boolean) => void;
 };
 
 function uniqSorted(values: string[]) {
@@ -155,10 +197,16 @@ const state: JobsState = {
   categories: CATEGORIES,
   locations: uniqSorted(dummyJobs.map((j) => j.location)),
   tags: uniqSorted(dummyJobs.flatMap((j) => j.tags)),
+  sectors: uniqSorted(dummyJobs.map((j) => j.sector || "")),
+  companies: [],
+  companiesByName: {},
   adConfig: {
     imageUrl: "https://images.unsplash.com/photo-1639762681485-074b7f938ba0?auto=format&fit=crop&q=80&w=2000&h=400",
     targetUrl: "https://replit.com",
   },
+  analyticsId: "",
+  jobSubmissions: [],
+  loaded: false,
   toggleSaved: (id) => {
     if (state.savedIds.has(id)) state.savedIds.delete(id);
     else state.savedIds.add(id);
@@ -171,8 +219,94 @@ const state: JobsState = {
   updateAdConfig: (config) => {
     state.adConfig = config;
     window.dispatchEvent(new Event("jobhaven:state_update"));
-  }
+  },
+  setJobs: (jobs) => {
+    state.jobsById = Object.fromEntries(jobs.map((job) => [job.id, job]));
+    state.jobIds = jobs.map((job) => job.id);
+    state.categories = uniqSorted(jobs.map((job) => job.category));
+    state.locations = uniqSorted(jobs.map((job) => job.location));
+    state.tags = uniqSorted(jobs.flatMap((job) => job.tags));
+    state.sectors = uniqSorted(jobs.map((job) => job.sector || ""));
+    state.loaded = true;
+    window.dispatchEvent(new Event("jobhaven:state_update"));
+  },
+  setCompanies: (companies) => {
+    state.companies = companies;
+    state.companiesByName = Object.fromEntries(
+      companies.map((company) => [company.name.toLowerCase(), company]),
+    );
+    window.dispatchEvent(new Event("jobhaven:state_update"));
+  },
+  setAnalyticsId: (id) => {
+    state.analyticsId = id;
+    window.localStorage.setItem("jobhaven-analytics", id);
+    window.dispatchEvent(new Event("jobhaven:state_update"));
+  },
+  submitJob: (submission) => {
+    state.jobSubmissions = [submission, ...state.jobSubmissions];
+    window.localStorage.setItem("jobhaven-submissions", JSON.stringify(state.jobSubmissions));
+    window.dispatchEvent(new Event("jobhaven:state_update"));
+  },
+  publishSubmission: (id, featured = false) => {
+    const submission = state.jobSubmissions.find((item) => item.id === id);
+    if (!submission) return;
+    const jobId = `sub-${id}`;
+    const job: Job = {
+      id: jobId,
+      title: submission.title,
+      description: submission.description,
+      location: submission.country,
+      link: submission.link,
+      category: submission.category,
+      company: submission.company,
+      logo: submission.logo,
+      tags: submission.tags,
+      additionDate: submission.additionDate,
+      country: submission.country,
+      remote: submission.remote,
+      sector: submission.sector,
+      featured,
+    };
+    if (!state.jobsById[jobId]) {
+      state.jobsById = { [jobId]: job, ...state.jobsById };
+      state.jobIds = [jobId, ...state.jobIds];
+    } else {
+      state.jobsById[jobId] = { ...job, featured };
+    }
+    state.jobSubmissions = state.jobSubmissions.filter((item) => item.id !== id);
+    window.localStorage.setItem("jobhaven-submissions", JSON.stringify(state.jobSubmissions));
+    window.dispatchEvent(new Event("jobhaven:state_update"));
+  },
 };
+
+let fetchInFlight = false;
+
+async function fetchJobsOnce() {
+  if (state.loaded || fetchInFlight) return;
+  fetchInFlight = true;
+  try {
+    const [jobsRes, companiesRes] = await Promise.all([
+      fetch("/api/jobs"),
+      fetch("/api/companies"),
+    ]);
+    if (jobsRes.ok) {
+      const payload = await jobsRes.json();
+      if (payload?.jobs?.length) {
+        state.setJobs(payload.jobs);
+      }
+    }
+    if (companiesRes.ok) {
+      const payload = await companiesRes.json();
+      if (payload?.companies?.length) {
+        state.setCompanies(payload.companies);
+      }
+    }
+  } catch {
+    // keep dummy data on failure
+  } finally {
+    fetchInFlight = false;
+  }
+}
 
 export function useJobsStore(): JobsState {
   const [, setTick] = useState(0);
@@ -181,6 +315,29 @@ export function useJobsStore(): JobsState {
     const on = () => setTick((t) => t + 1);
     window.addEventListener("jobhaven:state_update", on);
     return () => window.removeEventListener("jobhaven:state_update", on);
+  }, []);
+
+  useEffect(() => {
+    fetchJobsOnce();
+  }, []);
+
+  useEffect(() => {
+    if (!state.analyticsId) {
+      const stored = window.localStorage.getItem("jobhaven-analytics");
+      if (stored) {
+        state.analyticsId = stored;
+      }
+    }
+    if (!state.jobSubmissions.length) {
+      const stored = window.localStorage.getItem("jobhaven-submissions");
+      if (stored) {
+        try {
+          state.jobSubmissions = JSON.parse(stored) as JobSubmission[];
+        } catch {
+          state.jobSubmissions = [];
+        }
+      }
+    }
   }, []);
 
   return state;

@@ -1,0 +1,11 @@
+{
+  "version": 2,
+  "framework": "vite",
+  "buildCommand": "npm run build",
+  "outputDirectory": "dist/public",
+  "rewrites": [
+    { "source": "/superadmin007", "destination": "/api/admin/page" },
+    { "source": "/superadmin007/(.*)", "destination": "/api/admin/page" },
+    { "source": "/(.*)", "destination": "/index.html" }
+  ]
+}

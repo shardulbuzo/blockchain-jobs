@@ -1,4 +1,4 @@
-import { useEffect, useMemo } from "react";
+import { useMemo } from "react";
 import { Link, useLocation, useRoute } from "wouter";
 import {
   ArrowLeft,
@@ -20,6 +20,75 @@ import { Separator } from "@/components/ui/separator";
 import { cn } from "@/lib/utils";
 import { useJobsStore } from "@/state/jobs-store";
 import { Header, Footer, SEOHead, AdBanner } from "./home";
+
+function escapeHtml(value: string) {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+function normalizeText(text: string) {
+  return text.replace(/\s+/g, " ").trim();
+}
+
+function asHeading(text: string) {
+  if (!text) return "";
+  const trimmed = normalizeText(text);
+  if (trimmed.length < 3 || trimmed.length > 90) return "";
+  return `<h3>${escapeHtml(trimmed)}</h3>`;
+}
+
+function asParagraph(text: string) {
+  const trimmed = normalizeText(text);
+  if (!trimmed) return "";
+  return `<p>${escapeHtml(trimmed)}</p>`;
+}
+
+function sanitizeList(list: HTMLElement) {
+  const items = Array.from(list.querySelectorAll(":scope > li"))
+    .map((li) => normalizeText(li.textContent || ""))
+    .filter(Boolean)
+    .map((text) => `<li>${escapeHtml(text)}</li>`)
+    .join("");
+  return items ? `<${list.tagName.toLowerCase()}>${items}</${list.tagName.toLowerCase()}>` : "";
+}
+
+function toRichHtml(input: string) {
+  if (!input) return "";
+  const parser = new DOMParser();
+  const doc = parser.parseFromString(input, "text/html");
+  const output: string[] = [];
+  const body = doc.body;
+
+  Array.from(body.children).forEach((node) => {
+    const tag = node.tagName.toLowerCase();
+    if (tag === "script" || tag === "style") return;
+    if (tag === "ul" || tag === "ol") {
+      const listHtml = sanitizeList(node);
+      if (listHtml) output.push(listHtml);
+      return;
+    }
+
+    const strong = node.querySelector("b,strong");
+    const onlyStrong =
+      strong &&
+      normalizeText(node.textContent || "") === normalizeText(strong.textContent || "");
+    if (onlyStrong) {
+      const heading = asHeading(strong?.textContent || "");
+      if (heading) output.push(heading);
+      return;
+    }
+
+    const text = normalizeText(node.textContent || "");
+    if (text) {
+      output.push(asParagraph(text));
+    }
+  });
+
+  return output.join("");
+}
 
 function Stat({
   icon: Icon,
@@ -57,12 +126,17 @@ export default function JobDetail() {
     return jobIds.filter(jid => jobsById[jid]?.company === job.company).length;
   }, [job, jobIds, jobsById]);
 
+  const descriptionHtml = useMemo(() => {
+    if (!job?.description) return "";
+    return toRichHtml(job.description);
+  }, [job?.description]);
+
   if (!job) {
     return (
       <div className="min-h-screen">
         <SEOHead title="Job Not Found — JobHaven" />
         <Header />
-        <div className="mx-auto max-w-4xl px-4 py-10">
+        <main id="main-content" className="mx-auto max-w-4xl px-4 py-10">
           <Card className="rounded-2xl p-6" data-testid="card-job-missing">
             <div className="font-serif text-2xl">Job not found</div>
             <p className="mt-2 text-sm text-muted-foreground">
@@ -75,7 +149,7 @@ export default function JobDetail() {
               </Button>
             </div>
           </Card>
-        </div>
+        </main>
         <Footer categories={categories} locations={locations} />
       </div>
     );
@@ -86,6 +160,38 @@ export default function JobDetail() {
       <SEOHead 
         jobData={{ title: job.title, company: job.company, location: job.location }}
         description={job.description.slice(0, 160)}
+        canonicalPath={`/job/${job.id}`}
+        structuredData={{
+          "@context": "https://schema.org",
+          "@type": "JobPosting",
+          title: job.title,
+          description: job.description,
+          datePosted: job.additionDate,
+          hiringOrganization: {
+            "@type": "Organization",
+            name: job.company,
+          },
+          jobLocation: {
+            "@type": "Place",
+            address: {
+              "@type": "PostalAddress",
+              addressCountry: job.country,
+            },
+          },
+          applicantLocationRequirements: {
+            "@type": "Country",
+            name: job.country,
+          },
+        }}
+        keywords={[
+          `${job.title} job`,
+          `${job.company} careers`,
+          "web3 jobs",
+          "blockchain jobs",
+          "crypto jobs",
+          job.category,
+          job.sector || "",
+        ].filter(Boolean)}
       />
       <Header />
       <header className="sticky top-0 z-20 border-b bg-background/70 backdrop-blur supports-[backdrop-filter]:bg-background/60">
@@ -118,7 +224,7 @@ export default function JobDetail() {
         </div>
       </header>
 
-      <main className="mx-auto max-w-6xl px-4 pb-14 pt-8">
+      <main id="main-content" className="mx-auto max-w-6xl px-4 pb-14 pt-8">
         <AdBanner />
         
         <div className="grid gap-6 lg:grid-cols-12">
@@ -166,15 +272,21 @@ export default function JobDetail() {
                       <MapPin className="h-4 w-4" />
                       {job.location}
                     </span>
-                    <span className="inline-flex items-center gap-1" data-testid="text-job-category">
-                      <Tag className="h-4 w-4" />
-                      {job.category}
-                    </span>
-                    {job.remote && (
-                      <span className="inline-flex items-center gap-1" data-testid="text-job-remote">
-                        <Globe className="h-4 w-4" />
-                        {job.remote}
-                      </span>
+                <span className="inline-flex items-center gap-1" data-testid="text-job-category">
+                  <Tag className="h-4 w-4" />
+                  {job.category}
+                </span>
+                {job.sector && (
+                  <span className="inline-flex items-center gap-1" data-testid="text-job-sector">
+                    <Tag className="h-4 w-4" />
+                    {job.sector}
+                  </span>
+                )}
+                {job.remote && (
+                  <span className="inline-flex items-center gap-1" data-testid="text-job-remote">
+                    <Globe className="h-4 w-4" />
+                    {job.remote}
+                  </span>
                     )}
                   </div>
 
@@ -199,13 +311,11 @@ export default function JobDetail() {
                 <h2 className="font-serif text-xl" data-testid="heading-description">
                   Job description
                 </h2>
-                <div className="mt-3 text-sm leading-7 text-foreground" data-testid="text-job-description">
-                  {job.description.split("\n").map((p: string, idx: number) => (
-                    <p key={idx} className="mb-3">
-                      {p}
-                    </p>
-                  ))}
-                </div>
+                <div
+                  className="rich-text mt-3 text-sm leading-7 text-foreground"
+                  data-testid="text-job-description"
+                  dangerouslySetInnerHTML={{ __html: descriptionHtml }}
+                />
               </article>
             </Card>
           </section>
@@ -215,6 +325,7 @@ export default function JobDetail() {
               <Stat icon={Calendar} label="Added" value={job.additionDate} testId="stat-added" />
               <Stat icon={Globe} label="Country" value={job.country} testId="stat-country" />
               <Stat icon={Tag} label="Category" value={job.category} testId="stat-category" />
+              {job.sector && <Stat icon={Tag} label="Sector" value={job.sector} testId="stat-sector" />}
             </div>
 
             <Card className="rounded-2xl border bg-card p-6 shadow-sm" data-testid="card-company">
