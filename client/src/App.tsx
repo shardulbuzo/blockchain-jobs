@@ -12,6 +12,8 @@ import Companies from "./pages/companies";
 import CompanyDetail from "./pages/company-detail";
 import SuperAdmin from "./pages/super-admin";
 import AdminLogin from "./pages/admin-login";
+import PrivacyPolicy from "./pages/privacy";
+import FilteredHome from "./pages/filtered-home";
 import { queryClient } from "./lib/queryClient";
 import { useJobsStore } from "@/state/jobs-store";
 
@@ -19,12 +21,16 @@ function Router() {
   return (
     <Switch>
       <Route path="/" component={Home} />
+      <Route path="/category/:id" component={FilteredHome} />
+      <Route path="/sector/:id" component={FilteredHome} />
+      <Route path="/country/:id" component={FilteredHome} />
       <Route path="/job/:id" component={JobDetail} />
       <Route path="/companies" component={Companies} />
       <Route path="/company/:id" component={CompanyDetail} />
       <Route path="/saved" component={SavedJobs} />
       <Route path="/auth" component={Auth} />
       <Route path="/admin-login" component={AdminLogin} />
+      <Route path="/privacy" component={PrivacyPolicy} />
       <Route path="/superadmin007" component={SuperAdmin} />
       <Route component={NotFound} />
     </Switch>
@@ -32,7 +38,7 @@ function Router() {
 }
 
 export default function App() {
-  const { analyticsId } = useJobsStore();
+  const { analyticsId, faviconUrl } = useJobsStore();
 
   useEffect(() => {
     if (!analyticsId) return;
@@ -55,6 +61,17 @@ export default function App() {
     `;
     document.head.appendChild(inline);
   }, [analyticsId]);
+
+  useEffect(() => {
+    if (!faviconUrl) return;
+    let link = document.querySelector('link[rel="icon"]') as HTMLLinkElement | null;
+    if (!link) {
+      link = document.createElement("link");
+      link.rel = "icon";
+      document.head.appendChild(link);
+    }
+    link.href = faviconUrl;
+  }, [faviconUrl]);
 
   return (
     <QueryClientProvider client={queryClient}>

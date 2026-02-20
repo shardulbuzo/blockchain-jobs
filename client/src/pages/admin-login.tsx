@@ -33,7 +33,7 @@ export default function AdminLogin() {
 
   return (
     <div className="min-h-screen bg-muted/30">
-      <SEOHead title="Admin Login — JobHaven" canonicalPath="/admin-login" noIndex />
+      <SEOHead title="Admin Login — Crypto Jobs" canonicalPath="/admin-login" noIndex />
       <Header />
       <main id="main-content" className="mx-auto max-w-md px-4 py-24">
         <Card className="rounded-3xl border shadow-xl overflow-hidden">

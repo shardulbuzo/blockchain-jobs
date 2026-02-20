@@ -7,7 +7,7 @@ import { SEOHead } from "./home";
 export default function NotFound() {
   return (
     <div className="min-h-screen bg-grid">
-      <SEOHead title="Page Not Found — JobHaven" canonicalPath="/404" noIndex />
+      <SEOHead title="Page Not Found — Crypto Jobs" canonicalPath="/404" noIndex />
       <main id="main-content" className="mx-auto max-w-lg px-4 py-14">
         <Card className="rounded-3xl border bg-card p-8 shadow-md" data-testid="card-404">
           <div className="font-serif text-3xl tracking-tight" data-testid="text-404-title">

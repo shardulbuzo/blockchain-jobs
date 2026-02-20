@@ -3,17 +3,19 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { useSessionStore } from "@/state/session-store";
-import { Building2 } from "lucide-react";
+import { Linkedin, Chrome, Sparkles } from "lucide-react";
 import { SEOHead } from "./home";
 
 function ProviderButton({
   label,
   onClick,
   testId,
+  icon: Icon,
 }: {
   label: string;
   onClick: () => void;
   testId: string;
+  icon: React.ElementType;
 }) {
   return (
     <Button
@@ -23,25 +25,29 @@ function ProviderButton({
       data-testid={testId}
     >
       <span className="inline-flex items-center gap-2">
-        <span className="inline-flex h-8 w-8 items-center justify-center rounded-xl bg-background ring-1 ring-border">
-          <Building2 className="h-4 w-4" />
+        <span className="inline-flex h-9 w-9 items-center justify-center rounded-xl bg-background ring-1 ring-border">
+          <Icon className="h-4 w-4" />
         </span>
         {label}
       </span>
-      <span className="text-xs text-muted-foreground">Mock</span>
+      <span className="text-xs text-muted-foreground">OAuth</span>
     </Button>
   );
 }
 
 export default function Auth() {
   const [, navigate] = useLocation();
-  const { user, signInMock, signOut } = useSessionStore();
+  const { user, signInWithProvider, signOut } = useSessionStore();
 
   return (
     <div className="min-h-screen">
-      <SEOHead title="Sign In — JobHaven" description="Sign in to save jobs and manage your shortlist." canonicalPath="/auth" />
+      <SEOHead title="Sign In — Crypto Jobs" description="Sign in to save jobs and manage your shortlist." canonicalPath="/auth" />
       <main id="main-content" className="mx-auto max-w-lg px-4 py-12">
         <Card className="rounded-3xl border bg-card p-7 shadow-md" data-testid="card-auth">
+          <div className="inline-flex items-center gap-2 self-start rounded-full border bg-background px-3 py-1 text-xs text-muted-foreground">
+            <Sparkles className="h-3.5 w-3.5 text-primary" />
+            Secure sign in
+          </div>
           <div className="font-serif text-3xl tracking-tight">Welcome</div>
           <p className="mt-2 text-sm text-muted-foreground">
             Sign in to save jobs and view your shortlist.
@@ -54,18 +60,18 @@ export default function Auth() {
               <ProviderButton
                 label="Continue with Google"
                 onClick={() => {
-                  signInMock({ provider: "google", name: "Alex Candidate", email: "alex@example.com" });
-                  navigate("/");
+                  signInWithProvider("google");
                 }}
                 testId="button-auth-google"
+                icon={Chrome}
               />
               <ProviderButton
                 label="Continue with LinkedIn"
                 onClick={() => {
-                  signInMock({ provider: "linkedin", name: "Alex Candidate", email: "alex@linkedin.com", linkedin: "https://www.linkedin.com/in/alex-candidate" });
-                  navigate("/");
+                  signInWithProvider("linkedin");
                 }}
                 testId="button-auth-linkedin"
+                icon={Linkedin}
               />
             </div>
           ) : (
@@ -97,7 +103,7 @@ export default function Auth() {
           )}
 
           <p className="mt-6 text-xs text-muted-foreground">
-            This is a frontend-only prototype. When you share your Google Sheet link, we’ll swap the dummy data for live Sheet data.
+            Secure OAuth via Google and LinkedIn. Your profile is stored in our database.
           </p>
         </Card>
       </main>

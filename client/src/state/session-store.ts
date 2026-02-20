@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { supabase } from "@/lib/supabase";
 
 export type User = {
   provider: "google" | "linkedin";
@@ -9,40 +10,20 @@ export type User = {
 
 export type SessionState = {
   user: User | null;
-  users: User[];
-  signInMock: (u: User) => void;
+  signInWithProvider: (provider: "google" | "linkedin") => Promise<void>;
   signOut: () => void;
 };
 
-function loadUsers(): User[] {
-  try {
-    const raw = window.localStorage.getItem("jobhaven-users");
-    if (!raw) return [];
-    return JSON.parse(raw) as User[];
-  } catch {
-    return [];
-  }
-}
-
-function persistUsers(users: User[]) {
-  window.localStorage.setItem("jobhaven-users", JSON.stringify(users));
-}
-
 const session: SessionState = {
   user: null,
-  users: [],
-  signInMock: (u) => {
-    session.user = u;
-    if (!session.users.length) {
-      session.users = loadUsers();
-    }
-    if (!session.users.find((existing) => existing.email === u.email)) {
-      session.users = [...session.users, u];
-      persistUsers(session.users);
-    }
-    window.dispatchEvent(new Event("jobhaven:session"));
+  signInWithProvider: async (provider) => {
+    await supabase.auth.signInWithOAuth({
+      provider,
+      options: { redirectTo: window.location.origin },
+    });
   },
-  signOut: () => {
+  signOut: async () => {
+    await supabase.auth.signOut();
     session.user = null;
     window.dispatchEvent(new Event("jobhaven:session"));
   },
@@ -58,10 +39,39 @@ export function useSessionStore(): SessionState {
   }, []);
 
   useEffect(() => {
-    if (!session.users.length) {
-      session.users = loadUsers();
+    supabase.auth.getSession().then(({ data }) => {
+      const user = data.session?.user;
+      if (user) {
+        session.user = {
+          provider: (user.app_metadata?.provider as "google" | "linkedin") || "google",
+          name: user.user_metadata?.full_name || user.email || "Candidate",
+          email: user.email || "",
+          linkedin: user.user_metadata?.profile || user.user_metadata?.linkedin || "",
+        };
+      } else {
+        session.user = null;
+      }
       setTick((t) => t + 1);
-    }
+    });
+
+    const { data: subscription } = supabase.auth.onAuthStateChange((_event, currentSession) => {
+      const user = currentSession?.user;
+      if (user) {
+        session.user = {
+          provider: (user.app_metadata?.provider as "google" | "linkedin") || "google",
+          name: user.user_metadata?.full_name || user.email || "Candidate",
+          email: user.email || "",
+          linkedin: user.user_metadata?.profile || user.user_metadata?.linkedin || "",
+        };
+      } else {
+        session.user = null;
+      }
+      window.dispatchEvent(new Event("jobhaven:session"));
+    });
+
+    return () => {
+      subscription?.subscription?.unsubscribe();
+    };
   }, []);
 
   return session;

@@ -7,14 +7,18 @@ import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useJobsStore } from "@/state/jobs-store";
-import { useSessionStore } from "@/state/session-store";
 import { Header, SEOHead } from "./home";
 
 export default function SuperAdmin() {
-  const { adConfig, updateAdConfig, jobSubmissions, publishSubmission, analyticsId, setAnalyticsId } = useJobsStore();
-  const { users } = useSessionStore();
+  const { adConfig, updateAdConfig, jobSubmissions, publishSubmission, analyticsId, setAnalyticsId, siteName, siteLogo, faviconUrl, setSiteSettings } = useJobsStore();
+  const [users, setUsers] = useState<Array<{ id: string; name: string; email: string; provider: string; linkedin: string }>>([]);
   const [newAdConfig, setNewAdConfig] = useState(adConfig);
   const [gaInput, setGaInput] = useState(analyticsId || "");
+  const [designForm, setDesignForm] = useState({
+    siteName: siteName || "Crypto Jobs",
+    siteLogo: siteLogo || "",
+    faviconUrl: faviconUrl || "",
+  });
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -123,6 +127,18 @@ export default function SuperAdmin() {
     }
   }, []);
 
+  useEffect(() => {
+    if (!isAuthenticated) return;
+    fetch("/api/admin/users")
+      .then((res) => res.json())
+      .then((data) => {
+        if (data?.users) setUsers(data.users);
+      })
+      .catch(() => {
+        setUsers([]);
+      });
+  }, [isAuthenticated]);
+
   if (checking) {
     return (
       <div className="min-h-screen bg-muted/30">
@@ -201,7 +217,7 @@ export default function SuperAdmin() {
 
   return (
     <div className="min-h-screen bg-muted/30">
-      <SEOHead title="SuperAdmin Dashboard — JobHaven" canonicalPath="/superadmin007" noIndex />
+      <SEOHead title="SuperAdmin Dashboard — Crypto Jobs" canonicalPath="/superadmin007" noIndex />
       <Header />
       <main id="main-content" className="mx-auto max-w-6xl px-4 py-12">
         <div className="flex items-center justify-between mb-8">
@@ -236,6 +252,10 @@ export default function SuperAdmin() {
             <TabsTrigger value="analytics" className="rounded-lg gap-2">
               <Sparkles className="h-4 w-4" />
               Analytics
+            </TabsTrigger>
+            <TabsTrigger value="design" className="rounded-lg gap-2">
+              <Image className="h-4 w-4" />
+              Design
             </TabsTrigger>
           </TabsList>
 
@@ -429,6 +449,81 @@ export default function SuperAdmin() {
                 </Button>
               </CardContent>
             </Card>
+          </TabsContent>
+
+          <TabsContent value="design">
+            <div className="grid gap-6 md:grid-cols-2">
+              <Card className="rounded-2xl border bg-card shadow-sm">
+                <CardHeader>
+                  <CardTitle>Brand & Design</CardTitle>
+                  <CardDescription>Update site name, logo, and favicon.</CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium">Site Name</label>
+                    <Input
+                      value={designForm.siteName}
+                      onChange={(e) => setDesignForm({ ...designForm, siteName: e.target.value })}
+                      placeholder="Crypto Jobs"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium">Logo URL</label>
+                    <Input
+                      value={designForm.siteLogo}
+                      onChange={(e) => setDesignForm({ ...designForm, siteLogo: e.target.value })}
+                      placeholder="https://..."
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium">Favicon URL</label>
+                    <Input
+                      value={designForm.faviconUrl}
+                      onChange={(e) => setDesignForm({ ...designForm, faviconUrl: e.target.value })}
+                      placeholder="https://..."
+                    />
+                  </div>
+                  <Button
+                    onClick={async () => {
+                      setSiteSettings(designForm);
+                      if (adminEmail) {
+                        await fetch("/api/admin/log", {
+                          method: "POST",
+                          headers: { "Content-Type": "application/json" },
+                          body: JSON.stringify({
+                            action: "design_update",
+                            actor: adminEmail,
+                            details: `Updated branding to ${designForm.siteName}`,
+                          }),
+                        });
+                      }
+                    }}
+                  >
+                    Save Design Settings
+                  </Button>
+                </CardContent>
+              </Card>
+
+              <Card className="rounded-2xl border bg-card shadow-sm">
+                <CardHeader>
+                  <CardTitle>Preview</CardTitle>
+                  <CardDescription>How your branding appears in the header.</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="flex items-center gap-3">
+                    <div className="h-12 w-12 rounded-xl bg-primary overflow-hidden">
+                      {designForm.siteLogo ? (
+                        <img src={designForm.siteLogo} alt="Logo preview" className="h-full w-full object-cover" />
+                      ) : null}
+                    </div>
+                    <div>
+                      <div className="font-serif text-lg">{designForm.siteName || "Crypto Jobs"}</div>
+                      <div className="text-xs text-muted-foreground">Web3 & Blockchain Careers</div>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
           </TabsContent>
         </Tabs>
       </main>

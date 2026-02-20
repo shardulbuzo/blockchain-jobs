@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useLocation } from "wouter";
 import { motion } from "framer-motion";
 import {
@@ -16,6 +16,7 @@ import {
   Twitter,
   Linkedin,
   Github,
+  Loader2,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -44,6 +45,31 @@ import { useJobsStore } from "@/state/jobs-store";
 import { useSessionStore } from "@/state/session-store";
 
 type StructuredData = Record<string, unknown> | Array<Record<string, unknown>>;
+type HomeSEO = {
+  title?: string;
+  description?: string;
+  canonicalPath?: string;
+  structuredData?: StructuredData;
+  keywords?: string[];
+  ogImage?: string;
+  noIndex?: boolean;
+};
+
+type HomeProps = {
+  initialFilters?: Partial<Filters>;
+  filterKey?: string;
+  seoOverride?: HomeSEO;
+  heading?: string;
+  subheading?: React.ReactNode;
+};
+
+function slugify(value: string) {
+  return value
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+}
 
 function upsertMeta(selector: string, create: () => HTMLMetaElement, content: string) {
   let meta = document.head.querySelector(selector) as HTMLMetaElement | null;
@@ -54,6 +80,14 @@ function upsertMeta(selector: string, create: () => HTMLMetaElement, content: st
   meta.setAttribute("content", content);
 }
 
+function getSiteOrigin() {
+  const configured = (import.meta as any)?.env?.VITE_SITE_URL as string | undefined;
+  if (configured) return configured.replace(/\/$/, "");
+  if (typeof window === "undefined") return "https://web3jobs.ooo";
+  if (window.location.hostname.includes("localhost")) return window.location.origin;
+  return "https://web3jobs.ooo";
+}
+
 export function SEOHead({
   title,
   description,
@@ -62,6 +96,8 @@ export function SEOHead({
   noIndex = false,
   structuredData,
   keywords,
+  siteName,
+  ogImage,
 }: {
   title?: string;
   description?: string;
@@ -70,17 +106,21 @@ export function SEOHead({
   noIndex?: boolean;
   structuredData?: StructuredData;
   keywords?: string[];
+  siteName?: string;
+  ogImage?: string;
 }) {
+  const brand = siteName || "Crypto Jobs";
   const finalTitle = jobData 
-    ? `Web3 and Blockchain jobs : ${jobData.title} job at ${jobData.company} at ${jobData.location}`
-    : title || "JobHaven — Web3 & Blockchain Jobs";
+    ? `Crypto jobs: ${jobData.title} at ${jobData.company} in ${jobData.location}`
+    : title || `${brand} — Web3 & Blockchain Careers`;
   
-  const finalDescription = description || "Find high-impact Web3 and Blockchain roles.";
+  const finalDescription = description || "Find high-impact crypto, Web3, and blockchain roles worldwide.";
 
   useEffect(() => {
     document.title = finalTitle;
-    const url = new URL(canonicalPath || window.location.pathname, window.location.origin).toString();
-    const imageUrl = new URL("/opengraph.jpg", window.location.origin).toString();
+    const siteOrigin = getSiteOrigin();
+    const url = new URL(canonicalPath || window.location.pathname, siteOrigin).toString();
+    const imageUrl = ogImage || new URL("/opengraph.jpg", siteOrigin).toString();
 
     upsertMeta('meta[name="description"]', () => {
       const meta = document.createElement("meta");
@@ -185,7 +225,7 @@ export function AdBanner() {
 export function Header() {
   const [location, navigate] = useLocation();
   const { user } = useSessionStore();
-  const { savedIds, submitJob } = useJobsStore();
+  const { savedIds, submitJob, siteName, siteLogo } = useJobsStore();
   const [theme, setTheme] = useState<"light" | "dark">("light");
   const [open, setOpen] = useState(false);
   const [jobForm, setJobForm] = useState({
@@ -272,10 +312,14 @@ export function Header() {
               className="group inline-flex items-center gap-2"
               data-testid="link-home"
             >
-              <div className="h-9 w-9 rounded-xl bg-gradient-to-br from-primary to-accent shadow-md ring-1 ring-black/5" />
+              <div className="h-9 w-9 rounded-xl bg-gradient-to-br from-primary to-accent shadow-md ring-1 ring-black/5 overflow-hidden">
+                {siteLogo && (
+                  <img src={siteLogo} alt={`${siteName} logo`} className="h-full w-full object-cover" />
+                )}
+              </div>
               <div className="leading-tight">
-                <div className="font-serif text-lg tracking-tight">JobHaven</div>
-                <div className="text-xs text-muted-foreground">Web3 & Blockchain Jobs</div>
+                <div className="font-serif text-lg tracking-tight">{siteName}</div>
+                <div className="text-xs text-muted-foreground">Web3 & Blockchain Careers</div>
               </div>
             </a>
           </Link>
@@ -307,13 +351,13 @@ export function Header() {
               )}
             </Button>
             <div className="hidden md:flex items-center gap-3 px-2">
-              <a href="https://twitter.com" target="_blank" rel="noreferrer" aria-label="Visit JobHaven on X">
+              <a href="https://twitter.com" target="_blank" rel="noreferrer" aria-label="Visit Crypto Jobs on X">
                 <Twitter className="h-4 w-4 text-muted-foreground hover:text-primary transition-colors" />
               </a>
-              <a href="https://www.linkedin.com" target="_blank" rel="noreferrer" aria-label="Visit JobHaven on LinkedIn">
+              <a href="https://www.linkedin.com/company/web3-jobs-ooo" target="_blank" rel="noreferrer" aria-label="Visit Crypto Jobs on LinkedIn">
                 <Linkedin className="h-4 w-4 text-muted-foreground hover:text-primary transition-colors" />
               </a>
-              <a href="https://github.com" target="_blank" rel="noreferrer" aria-label="Visit JobHaven on GitHub">
+              <a href="https://github.com" target="_blank" rel="noreferrer" aria-label="Visit Crypto Jobs on GitHub">
                 <Github className="h-4 w-4 text-muted-foreground hover:text-primary transition-colors" />
               </a>
             </div>
@@ -392,15 +436,14 @@ export function Header() {
 function Hero({ total }: { total: number }) {
   return (
     <section className="relative overflow-hidden">
-      <div className="absolute inset-0 bg-grid opacity-50" />
       <div className="absolute -top-24 right-[-10%] h-[420px] w-[420px] rounded-full bg-primary/20 blur-3xl" />
       <div className="absolute -bottom-28 left-[-10%] h-[460px] w-[460px] rounded-full bg-accent/20 blur-3xl" />
 
-      <div className="grain relative mx-auto max-w-6xl px-4 py-10 sm:py-14">
+      <div className="relative mx-auto max-w-6xl px-4 py-10 sm:py-14">
         <div className="flex flex-col gap-6">
           <div className="max-w-3xl">
             <h1 className="font-serif text-4xl leading-[1.04] tracking-tight sm:text-5xl">
-              Curated Web3 & Blockchain jobs — built for the next generation of builders.
+              Curated crypto, Web3 & blockchain jobs — built for the next generation of builders.
             </h1>
             <p className="mt-3 text-base text-muted-foreground sm:text-lg">
               Search and filter high-impact roles by country and category.
@@ -430,18 +473,20 @@ function Hero({ total }: { total: number }) {
   );
 }
 
-export function Footer({ categories, locations }: { categories: string[]; locations: string[] }) {
+export function Footer({ categories, locations, siteName, siteLogo }: { categories: string[]; locations: string[]; siteName: string; siteLogo: string }) {
   return (
     <footer className="mt-12 border-t bg-card pt-12 pb-8">
       <div className="mx-auto max-w-6xl px-4">
         <div className="grid gap-8 sm:grid-cols-2 md:grid-cols-4 lg:grid-cols-12">
           <div className="lg:col-span-4">
             <div className="flex items-center gap-2">
-              <div className="h-8 w-8 rounded-lg bg-primary" />
-              <span className="font-serif text-xl tracking-tight">JobHaven</span>
+              <div className="h-8 w-8 rounded-lg bg-primary overflow-hidden">
+                {siteLogo && <img src={siteLogo} alt={`${siteName} logo`} className="h-full w-full object-cover" />}
+              </div>
+              <span className="font-serif text-xl tracking-tight">{siteName}</span>
             </div>
             <p className="mt-4 text-sm text-muted-foreground leading-relaxed">
-              The premier destination for Web3 jobs and Blockchain jobs. We connect talented professionals with leading crypto companies worldwide. Find your next high-impact role in the decentralized future.
+              The premier destination for crypto, Web3, and blockchain roles. We connect talented professionals with leading companies worldwide. Find your next high-impact role in the decentralized future.
             </p>
           </div>
 
@@ -460,21 +505,19 @@ export function Footer({ categories, locations }: { categories: string[]; locati
             <h4 className="font-semibold text-sm uppercase tracking-wider">Jobs by Country</h4>
             <div className="mt-4 grid grid-cols-2 gap-2 text-sm text-muted-foreground">
               {locations.map(loc => (
-                <a key={loc} href="#" className="hover:text-primary transition-colors">
+                <a key={loc} href={`/country/${slugify(loc)}`} className="hover:text-primary transition-colors">
                   Blockchain Jobs in {loc}
                 </a>
               ))}
-              <a href="#" className="hover:text-primary transition-colors">Web3 Jobs in Singapore</a>
-              <a href="#" className="hover:text-primary transition-colors">Blockchain Jobs in UAE</a>
             </div>
           </div>
         </div>
         <Separator className="my-8" />
         <div className="flex flex-col sm:flex-row justify-between items-center gap-4 text-xs text-muted-foreground">
-          <p>© 2026 JobHaven. All rights reserved. Your trusted source for Web3 and Blockchain opportunities.</p>
+          <p>© 2026 Crypto Jobs. All rights reserved. Your trusted source for Web3 and blockchain opportunities.</p>
           <div className="flex gap-6">
             <a href="#" className="hover:text-primary transition-colors">Terms</a>
-            <a href="#" className="hover:text-primary transition-colors">Privacy</a>
+            <a href="/privacy" className="hover:text-primary transition-colors">Privacy</a>
             <a href="#" className="hover:text-primary transition-colors">Cookies</a>
           </div>
         </div>
@@ -497,12 +540,16 @@ function FiltersBar({
   categories,
   locations,
   sectors,
+  categoryCounts,
+  sectorCounts,
 }: {
   filters: Filters;
   setFilters: (v: Filters) => void;
   categories: string[];
   locations: string[];
   sectors: string[];
+  categoryCounts: Record<string, number>;
+  sectorCounts: Record<string, number>;
 }) {
   return (
     <Card className="mx-auto max-w-6xl border bg-card/80 p-4 shadow-sm backdrop-blur" role="search" aria-label="Filter jobs">
@@ -598,6 +645,7 @@ function FiltersBar({
                 data-testid={`button-cat-${c.toLowerCase().replace(/\s+/g, "-")}`}
               >
                 {c}
+                <span className="ml-2 text-xs text-muted-foreground">{categoryCounts[c] || 0}</span>
               </Button>
             ))}
           </div>
@@ -621,6 +669,7 @@ function FiltersBar({
                 data-testid={`button-sector-${sector.toLowerCase().replace(/\s+/g, "-")}`}
               >
                 {sector}
+                <span className="ml-2 text-xs text-muted-foreground">{sectorCounts[sector] || 0}</span>
               </Button>
             ))}
           </div>
@@ -762,15 +811,82 @@ export function JobRow({ id }: { id: string }) {
   );
 }
 
-export default function Home() {
-  const { jobIds, categories, locations, jobsById, sectors } = useJobsStore();
-  const [filters, setFilters] = useState<Filters>({
+export default function Home({ initialFilters, filterKey, seoOverride, heading, subheading }: HomeProps = {}) {
+  const [location, setLocation] = useLocation();
+  const { jobIds, categories, locations, jobsById, sectors, loaded, siteName, siteLogo } = useJobsStore();
+  const baseFilters: Filters = {
     q: "",
     category: "all",
     location: "all",
     remote: "all",
     sector: "all",
-  });
+  };
+  const [filters, setFilters] = useState<Filters>(baseFilters);
+  const [page, setPage] = useState(1);
+  const pageSize = 100;
+  const syncingRef = useRef(false);
+
+  const parseQuery = (search: string) => {
+    const params = new URLSearchParams(search);
+    const nextFilters: Filters = {
+      q: params.get("q") || "",
+      category: params.get("category") || "all",
+      location: params.get("country") || "all",
+      remote: params.get("remote") || "all",
+      sector: params.get("sector") || "all",
+    };
+    const nextPage = Math.max(1, Number(params.get("page") || "1"));
+    return { nextFilters, nextPage, hasQuery: params.toString().length > 0 };
+  };
+
+  const buildQuery = (nextFilters: Filters, nextPage: number) => {
+    const params = new URLSearchParams();
+    if (nextFilters.q) params.set("q", nextFilters.q);
+    if (nextFilters.category !== "all") params.set("category", nextFilters.category);
+    if (nextFilters.sector !== "all") params.set("sector", nextFilters.sector);
+    if (nextFilters.location !== "all") params.set("country", nextFilters.location);
+    if (nextFilters.remote !== "all") params.set("remote", nextFilters.remote);
+    if (nextPage > 1) params.set("page", String(nextPage));
+    const query = params.toString();
+    return query ? `?${query}` : "";
+  };
+
+  const updateUrl = (nextFilters: Filters, nextPage: number) => {
+    const [path] = location.split("?");
+    const query = buildQuery(nextFilters, nextPage);
+    const next = `${path}${query}`;
+    if (next !== location) setLocation(next);
+  };
+
+  useEffect(() => {
+    if (initialFilters || filterKey) {
+      setFilters({ ...baseFilters, ...initialFilters });
+    }
+  }, [filterKey]);
+
+  useEffect(() => {
+    const [, search = ""] = location.split("?");
+    const { nextFilters, nextPage, hasQuery } = parseQuery(search);
+    if (!hasQuery && (initialFilters || filterKey)) return;
+    syncingRef.current = true;
+    setFilters(nextFilters);
+    setPage(nextPage);
+    setTimeout(() => {
+      syncingRef.current = false;
+    }, 0);
+  }, [location]);
+
+  const counts = useMemo(() => {
+    const categoryCounts: Record<string, number> = {};
+    const sectorCounts: Record<string, number> = {};
+    jobIds.forEach((id) => {
+      const job = jobsById[id];
+      if (!job) return;
+      if (job.category) categoryCounts[job.category] = (categoryCounts[job.category] || 0) + 1;
+      if (job.sector) sectorCounts[job.sector] = (sectorCounts[job.sector] || 0) + 1;
+    });
+    return { categoryCounts, sectorCounts };
+  }, [jobIds, jobsById]);
 
   const filtered = useMemo(() => {
     const q = filters.q.trim().toLowerCase();
@@ -809,6 +925,23 @@ export default function Home() {
     });
   }, [jobIds, filters, jobsById]);
 
+  useEffect(() => {
+    if (syncingRef.current) return;
+    setPage(1);
+    updateUrl(filters, 1);
+  }, [filters, filterKey]);
+
+  useEffect(() => {
+    if (syncingRef.current) return;
+    updateUrl(filters, page);
+  }, [page]);
+
+  const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
+  const paged = useMemo(() => {
+    const start = (page - 1) * pageSize;
+    return filtered.slice(start, start + pageSize);
+  }, [filtered, page]);
+
   const featured = useMemo(
     () => filtered.filter((id) => jobsById[id]?.featured),
     [filtered, jobsById],
@@ -818,9 +951,9 @@ export default function Home() {
     () => ({
       "@context": "https://schema.org",
       "@type": "WebSite",
-      name: "JobHaven",
+      name: "Crypto Jobs",
       url: window.location.origin,
-      description: "Curated Web3 and blockchain jobs with fast filtering by location, category, and remote type.",
+      description: "Curated crypto, Web3, and blockchain jobs with fast filtering by country, category, and sector.",
       potentialAction: {
         "@type": "SearchAction",
         target: `${window.location.origin}/?q={search_term_string}`,
@@ -833,10 +966,13 @@ export default function Home() {
   return (
     <div className="min-h-screen">
       <SEOHead
-        title="JobHaven — Web3 & Blockchain Jobs"
-        description="AI-optimized job board for Web3, blockchain, crypto, DeFi, and fintech roles. Browse verified jobs, featured roles, and companies hiring worldwide."
-        canonicalPath="/"
-        structuredData={homeStructuredData}
+        title={seoOverride?.title || `${siteName} — Web3 & Blockchain Careers`}
+        description={seoOverride?.description || "AI-optimized job board for crypto, Web3, blockchain, DeFi, and fintech roles. Browse verified jobs, featured roles, and companies hiring worldwide."}
+        canonicalPath={seoOverride?.canonicalPath || "/"}
+        structuredData={seoOverride?.structuredData || homeStructuredData}
+        siteName={siteName}
+        ogImage={seoOverride?.ogImage || `${getSiteOrigin()}/api/og/home`}
+        noIndex={seoOverride?.noIndex}
         keywords={[
           "web3 jobs",
           "blockchain jobs",
@@ -846,6 +982,7 @@ export default function Home() {
           "smart contract jobs",
           "remote web3 jobs",
           "web3 companies hiring",
+          ...(seoOverride?.keywords || []),
         ]}
       />
       <Header />
@@ -859,6 +996,8 @@ export default function Home() {
             categories={categories}
             locations={locations}
             sectors={sectors}
+            categoryCounts={counts.categoryCounts}
+            sectorCounts={counts.sectorCounts}
           />
         </div>
 
@@ -889,26 +1028,40 @@ export default function Home() {
 
         <div className="mt-8 flex items-end justify-between">
           <div>
-            <h2 className="font-serif text-2xl tracking-tight">Latest Web3 roles</h2>
+            <h2 className="font-serif text-2xl tracking-tight">{heading || "Latest Crypto Jobs"}</h2>
             <p className="mt-1 text-sm text-muted-foreground" data-testid="text-results" aria-live="polite">
-              Showing <span className="font-medium text-foreground">{filtered.length}</span> blockchain jobs
+              {subheading || (
+                <>
+                  Showing <span className="font-medium text-foreground">{filtered.length}</span> blockchain jobs
+                </>
+              )}
             </p>
           </div>
         </div>
 
         <div className="mt-5 grid gap-3">
-          {filtered.map((id, idx) => (
-            <motion.div
-              key={id}
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.25, delay: Math.min(idx * 0.02, 0.25) }}
-            >
-              <JobRow id={id} />
-            </motion.div>
-          ))}
+          {!loaded && (
+            <Card className="rounded-2xl border bg-card p-8 text-center">
+              <div className="mx-auto flex max-w-md flex-col items-center gap-3">
+                <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+                <div className="text-sm text-muted-foreground">Loading jobs…</div>
+              </div>
+            </Card>
+          )}
 
-          {filtered.length === 0 && (
+          {loaded &&
+            paged.map((id, idx) => (
+              <motion.div
+                key={id}
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.25, delay: Math.min(idx * 0.02, 0.25) }}
+              >
+                <JobRow id={id} />
+              </motion.div>
+            ))}
+
+          {loaded && filtered.length === 0 && (
             <Card className="rounded-2xl border bg-card p-8 text-center" data-testid="empty-results">
               <div className="mx-auto max-w-md">
                 <div className="font-serif text-xl tracking-tight">No blockchain roles found</div>
@@ -934,8 +1087,24 @@ export default function Home() {
             </Card>
           )}
         </div>
+
+        {loaded && totalPages > 1 && (
+          <div className="mt-8 flex flex-wrap items-center justify-center gap-2">
+            {Array.from({ length: totalPages }, (_, i) => i + 1).map((p) => (
+              <Button
+                key={`page-${p}`}
+                variant={p === page ? "default" : "secondary"}
+                size="sm"
+                onClick={() => setPage(p)}
+                data-testid={`page-${p}`}
+              >
+                {p}
+              </Button>
+            ))}
+          </div>
+        )}
       </main>
-      <Footer categories={categories} locations={locations} />
+      <Footer categories={categories} locations={locations} siteName={siteName} siteLogo={siteLogo} />
     </div>
   );
 }

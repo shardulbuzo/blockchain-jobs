@@ -12,7 +12,7 @@ import { SEOHead } from "./home";
 export default function SavedJobs() {
   const [, navigate] = useLocation();
   const { user } = useSessionStore();
-  const { savedIds, jobsById } = useJobsStore();
+  const { savedIds, jobsById, siteName } = useJobsStore();
 
   const savedJobs = useMemo(() => {
     return Array.from(savedIds)
@@ -23,7 +23,7 @@ export default function SavedJobs() {
   if (!user) {
     return (
       <div className="min-h-screen">
-        <SEOHead title="Saved Jobs — JobHaven" description="Sign in to view and manage your saved jobs." canonicalPath="/saved" />
+      <SEOHead title={`Saved Jobs — ${siteName}`} description="Sign in to view and manage your saved jobs." canonicalPath="/saved" siteName={siteName} />
         <div className="mx-auto max-w-3xl px-4 py-10">
           <Card className="rounded-3xl border bg-card p-7 shadow-md" data-testid="card-auth-required">
             <div className="flex items-center gap-2 text-sm text-muted-foreground">
@@ -51,7 +51,7 @@ export default function SavedJobs() {
 
   return (
     <div className="min-h-screen">
-      <SEOHead title="Saved Jobs — JobHaven" description="Manage your shortlisted Web3 and blockchain roles." canonicalPath="/saved" />
+      <SEOHead title={`Saved Jobs — ${siteName}`} description="Manage your shortlisted crypto, Web3, and blockchain roles." canonicalPath="/saved" siteName={siteName} />
       <header className="sticky top-0 z-30 border-b bg-background/70 backdrop-blur supports-[backdrop-filter]:bg-background/60">
         <a href="#main-content" className="skip-link">
           Skip to main content

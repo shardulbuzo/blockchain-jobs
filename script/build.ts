@@ -1,6 +1,8 @@
 import { build as esbuild } from "esbuild";
 import { build as viteBuild } from "vite";
 import { rm, readFile } from "fs/promises";
+import { spawn } from "node:child_process";
+import { execa } from "execa";
 
 // server deps to bundle to reduce openat(2) syscalls
 // which helps cold start times
@@ -37,6 +39,19 @@ async function buildAll() {
 
   console.log("building client...");
   await viteBuild();
+
+  console.log("prerendering seo pages...");
+  await new Promise<void>((resolve, reject) => {
+    const proc = spawn("tsx", ["script/prerender.ts"], { stdio: "inherit" });
+    proc.on("error", reject);
+    proc.on("close", (code) => {
+      if (code === 0) resolve();
+      else reject(new Error(`prerender failed with code ${code}`));
+    });
+  });
+
+  console.log("prerendering seo pages...");
+  await execa("tsx", ["script/prerender.ts"], { stdio: "inherit" });
 
   console.log("building server...");
   const pkg = JSON.parse(await readFile("package.json", "utf-8"));

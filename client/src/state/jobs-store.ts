@@ -137,6 +137,27 @@ const dummyJobs: Job[] = [
   },
 ];
 
+const SECTOR_OVERRIDES: Record<string, string> = {
+  defi: "DeFi",
+};
+const TAG_OVERRIDES: Record<string, string> = {
+  defi: "DeFi",
+};
+
+function canonicalizeLabel(
+  value: string,
+  map: Map<string, string>,
+  overrides: Record<string, string> = {},
+) {
+  const trimmed = value?.trim?.() || "";
+  if (!trimmed) return "";
+  const key = trimmed.toLowerCase();
+  if (overrides[key]) return overrides[key];
+  if (map.has(key)) return map.get(key) as string;
+  map.set(key, trimmed);
+  return trimmed;
+}
+
 export type AdConfig = {
   imageUrl: string;
   targetUrl: string;
@@ -172,6 +193,9 @@ export type JobsState = {
   companiesByName: Record<string, Company>;
   adConfig: AdConfig;
   analyticsId: string;
+  siteName: string;
+  siteLogo: string;
+  faviconUrl: string;
   jobSubmissions: JobSubmission[];
   loaded: boolean;
   toggleSaved: (id: string) => void;
@@ -180,6 +204,7 @@ export type JobsState = {
   setJobs: (jobs: Job[]) => void;
   setCompanies: (companies: Company[]) => void;
   setAnalyticsId: (id: string) => void;
+  setSiteSettings: (settings: { siteName: string; siteLogo: string; faviconUrl: string }) => void;
   submitJob: (submission: JobSubmission) => void;
   publishSubmission: (id: string, featured?: boolean) => void;
 };
@@ -191,13 +216,13 @@ function uniqSorted(values: string[]) {
 }
 
 const state: JobsState = {
-  jobsById: Object.fromEntries(dummyJobs.map((j) => [j.id, j])),
-  jobIds: dummyJobs.map((j) => j.id),
+  jobsById: {},
+  jobIds: [],
   savedIds: new Set<string>(),
-  categories: CATEGORIES,
-  locations: uniqSorted(dummyJobs.map((j) => j.location)),
-  tags: uniqSorted(dummyJobs.flatMap((j) => j.tags)),
-  sectors: uniqSorted(dummyJobs.map((j) => j.sector || "")),
+  categories: [],
+  locations: [],
+  tags: [],
+  sectors: [],
   companies: [],
   companiesByName: {},
   adConfig: {
@@ -205,6 +230,9 @@ const state: JobsState = {
     targetUrl: "https://replit.com",
   },
   analyticsId: "",
+  siteName: "Crypto Jobs",
+  siteLogo: "/logo-2c.svg",
+  faviconUrl: "/logo-2c.svg",
   jobSubmissions: [],
   loaded: false,
   toggleSaved: (id) => {
@@ -221,12 +249,21 @@ const state: JobsState = {
     window.dispatchEvent(new Event("jobhaven:state_update"));
   },
   setJobs: (jobs) => {
-    state.jobsById = Object.fromEntries(jobs.map((job) => [job.id, job]));
-    state.jobIds = jobs.map((job) => job.id);
-    state.categories = uniqSorted(jobs.map((job) => job.category));
-    state.locations = uniqSorted(jobs.map((job) => job.location));
-    state.tags = uniqSorted(jobs.flatMap((job) => job.tags));
-    state.sectors = uniqSorted(jobs.map((job) => job.sector || ""));
+    const categoryMap = new Map<string, string>();
+    const sectorMap = new Map<string, string>();
+    const tagMap = new Map<string, string>();
+    const normalizedJobs = jobs.map((job) => {
+      const category = canonicalizeLabel(job.category, categoryMap);
+      const sector = canonicalizeLabel(job.sector || "", sectorMap, SECTOR_OVERRIDES);
+      const tags = job.tags.map((tag) => canonicalizeLabel(tag, tagMap, TAG_OVERRIDES)).filter(Boolean);
+      return { ...job, category, sector, tags };
+    });
+    state.jobsById = Object.fromEntries(normalizedJobs.map((job) => [job.id, job]));
+    state.jobIds = normalizedJobs.map((job) => job.id);
+    state.categories = uniqSorted(normalizedJobs.map((job) => job.category));
+    state.locations = uniqSorted(normalizedJobs.map((job) => job.location));
+    state.tags = uniqSorted(normalizedJobs.flatMap((job) => job.tags));
+    state.sectors = uniqSorted(normalizedJobs.map((job) => job.sector || ""));
     state.loaded = true;
     window.dispatchEvent(new Event("jobhaven:state_update"));
   },
@@ -240,6 +277,13 @@ const state: JobsState = {
   setAnalyticsId: (id) => {
     state.analyticsId = id;
     window.localStorage.setItem("jobhaven-analytics", id);
+    window.dispatchEvent(new Event("jobhaven:state_update"));
+  },
+  setSiteSettings: (settings) => {
+    state.siteName = settings.siteName;
+    state.siteLogo = settings.siteLogo;
+    state.faviconUrl = settings.faviconUrl;
+    window.localStorage.setItem("jobhaven-site", JSON.stringify(settings));
     window.dispatchEvent(new Event("jobhaven:state_update"));
   },
   submitJob: (submission) => {
@@ -326,6 +370,19 @@ export function useJobsStore(): JobsState {
       const stored = window.localStorage.getItem("jobhaven-analytics");
       if (stored) {
         state.analyticsId = stored;
+      }
+    }
+    if (!state.siteName || !state.siteLogo || !state.faviconUrl) {
+      const stored = window.localStorage.getItem("jobhaven-site");
+      if (stored) {
+        try {
+          const parsed = JSON.parse(stored);
+          state.siteName = parsed.siteName || state.siteName;
+          state.siteLogo = parsed.siteLogo || "";
+          state.faviconUrl = parsed.faviconUrl || "";
+        } catch {
+          // ignore
+        }
       }
     }
     if (!state.jobSubmissions.length) {

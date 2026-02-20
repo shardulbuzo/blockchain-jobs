@@ -9,7 +9,7 @@ import { useJobsStore } from "@/state/jobs-store";
 export default function CompanyDetail() {
   const [, params] = useRoute("/company/:id");
   const companyName = params?.id ? decodeURIComponent(params.id) : "";
-  const { jobIds, jobsById, categories, locations, companiesByName } = useJobsStore();
+  const { jobIds, jobsById, categories, locations, companiesByName, loaded, siteName, siteLogo } = useJobsStore();
 
   const companyJobs = useMemo(() => {
     return jobIds.filter(id => jobsById[id]?.company === companyName);
@@ -22,12 +22,27 @@ export default function CompanyDetail() {
     return firstJobId ? jobsById[firstJobId] : null;
   }, [companyJobs, companyName, companiesByName, jobsById]);
 
+  if (!loaded && companyJobs.length === 0) {
+    return (
+      <div className="min-h-screen">
+        <SEOHead title={`Loading Company — ${siteName}`} canonicalPath={`/company/${encodeURIComponent(companyName)}`} noIndex siteName={siteName} />
+        <Header />
+        <main id="main-content" className="mx-auto max-w-6xl px-4 py-12 text-sm text-muted-foreground">
+          Loading company details…
+        </main>
+        <Footer categories={categories} locations={locations} siteName={siteName} siteLogo={siteLogo} />
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen">
       <SEOHead
-        title={`${companyName} Web3 & Blockchain Jobs — JobHaven`}
-        description={`Browse open Web3 and blockchain roles at ${companyName}.`}
+        title={`${companyName} Crypto Jobs — ${siteName}`}
+        description={`Browse open crypto, Web3, and blockchain roles at ${companyName}.`}
         canonicalPath={`/company/${encodeURIComponent(companyName)}`}
+        siteName={siteName}
+        ogImage={`https://web3jobs.ooo/api/og/company?name=${encodeURIComponent(companyName)}`}
         structuredData={{
           "@context": "https://schema.org",
           "@type": "Organization",
@@ -100,7 +115,7 @@ export default function CompanyDetail() {
           )}
         </div>
       </main>
-      <Footer categories={categories} locations={locations} />
+      <Footer categories={categories} locations={locations} siteName={siteName} siteLogo={siteLogo} />
     </div>
   );
 }

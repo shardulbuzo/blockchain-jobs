@@ -21,73 +21,43 @@ import { cn } from "@/lib/utils";
 import { useJobsStore } from "@/state/jobs-store";
 import { Header, Footer, SEOHead, AdBanner } from "./home";
 
-function escapeHtml(value: string) {
-  return value
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
-}
-
-function normalizeText(text: string) {
-  return text.replace(/\s+/g, " ").trim();
-}
-
-function asHeading(text: string) {
-  if (!text) return "";
-  const trimmed = normalizeText(text);
-  if (trimmed.length < 3 || trimmed.length > 90) return "";
-  return `<h3>${escapeHtml(trimmed)}</h3>`;
-}
-
-function asParagraph(text: string) {
-  const trimmed = normalizeText(text);
-  if (!trimmed) return "";
-  return `<p>${escapeHtml(trimmed)}</p>`;
-}
-
-function sanitizeList(list: HTMLElement) {
-  const items = Array.from(list.querySelectorAll(":scope > li"))
-    .map((li) => normalizeText(li.textContent || ""))
-    .filter(Boolean)
-    .map((text) => `<li>${escapeHtml(text)}</li>`)
-    .join("");
-  return items ? `<${list.tagName.toLowerCase()}>${items}</${list.tagName.toLowerCase()}>` : "";
-}
-
-function toRichHtml(input: string) {
+function sanitizeHtmlPreserve(input: string) {
   if (!input) return "";
   const parser = new DOMParser();
   const doc = parser.parseFromString(input, "text/html");
-  const output: string[] = [];
-  const body = doc.body;
+  const forbidden = new Set(["script", "style", "iframe", "object", "embed"]);
 
-  Array.from(body.children).forEach((node) => {
-    const tag = node.tagName.toLowerCase();
-    if (tag === "script" || tag === "style") return;
-    if (tag === "ul" || tag === "ol") {
-      const listHtml = sanitizeList(node);
-      if (listHtml) output.push(listHtml);
-      return;
-    }
+  const walk = (node: Element) => {
+    const children = Array.from(node.children);
+    children.forEach((child) => {
+      const tag = child.tagName.toLowerCase();
+      if (forbidden.has(tag)) {
+        child.remove();
+        return;
+      }
 
-    const strong = node.querySelector("b,strong");
-    const onlyStrong =
-      strong &&
-      normalizeText(node.textContent || "") === normalizeText(strong.textContent || "");
-    if (onlyStrong) {
-      const heading = asHeading(strong?.textContent || "");
-      if (heading) output.push(heading);
-      return;
-    }
+      // Strip dangerous attributes
+      Array.from(child.attributes).forEach((attr) => {
+        const name = attr.name.toLowerCase();
+        const value = attr.value;
+        if (name.startsWith("on")) {
+          child.removeAttribute(attr.name);
+        } else if (name === "style") {
+          child.removeAttribute(attr.name);
+        } else if (name === "href" && value.startsWith("javascript:")) {
+          child.removeAttribute(attr.name);
+        } else if (name !== "href" && name !== "rel" && name !== "target" && name !== "src" && name !== "alt") {
+          // Remove all other attributes to keep markup clean
+          child.removeAttribute(attr.name);
+        }
+      });
 
-    const text = normalizeText(node.textContent || "");
-    if (text) {
-      output.push(asParagraph(text));
-    }
-  });
+      walk(child);
+    });
+  };
 
-  return output.join("");
+  walk(doc.body);
+  return doc.body.innerHTML;
 }
 
 function Stat({
@@ -117,7 +87,7 @@ export default function JobDetail() {
   const [, params] = useRoute("/job/:id");
   const id = params?.id || "";
 
-  const { jobsById, toggleSaved, savedIds, jobIds, categories, locations } = useJobsStore();
+  const { jobsById, toggleSaved, savedIds, jobIds, categories, locations, loaded, siteName, siteLogo } = useJobsStore();
   const job = id ? jobsById[id] : undefined;
   const saved = id ? savedIds.has(id) : false;
 
@@ -128,13 +98,28 @@ export default function JobDetail() {
 
   const descriptionHtml = useMemo(() => {
     if (!job?.description) return "";
-    return toRichHtml(job.description);
+    return sanitizeHtmlPreserve(job.description);
   }, [job?.description]);
+
+  if (!job && !loaded) {
+    return (
+      <div className="min-h-screen">
+        <SEOHead title="Loading Job — Crypto Jobs" />
+        <Header />
+        <main id="main-content" className="mx-auto max-w-4xl px-4 py-10">
+          <Card className="rounded-2xl p-6 text-center">
+            <div className="text-sm text-muted-foreground">Loading job details…</div>
+          </Card>
+        </main>
+        <Footer categories={categories} locations={locations} siteName={siteName} siteLogo={siteLogo} />
+      </div>
+    );
+  }
 
   if (!job) {
     return (
       <div className="min-h-screen">
-        <SEOHead title="Job Not Found — JobHaven" />
+        <SEOHead title={`Job Not Found — ${siteName}`} siteName={siteName} />
         <Header />
         <main id="main-content" className="mx-auto max-w-4xl px-4 py-10">
           <Card className="rounded-2xl p-6" data-testid="card-job-missing">
@@ -150,7 +135,7 @@ export default function JobDetail() {
             </div>
           </Card>
         </main>
-        <Footer categories={categories} locations={locations} />
+        <Footer categories={categories} locations={locations} siteName={siteName} siteLogo={siteLogo} />
       </div>
     );
   }
@@ -161,27 +146,43 @@ export default function JobDetail() {
         jobData={{ title: job.title, company: job.company, location: job.location }}
         description={job.description.slice(0, 160)}
         canonicalPath={`/job/${job.id}`}
+        siteName={siteName}
+        ogImage={`https://web3jobs.ooo/api/og/job?title=${encodeURIComponent(job.title)}&company=${encodeURIComponent(job.company)}&location=${encodeURIComponent(job.location)}&category=${encodeURIComponent(job.category)}&featured=${job.featured ? "1" : "0"}`}
         structuredData={{
           "@context": "https://schema.org",
           "@type": "JobPosting",
           title: job.title,
           description: job.description,
           datePosted: job.additionDate,
+          identifier: {
+            "@type": "PropertyValue",
+            name: job.company,
+            value: job.id,
+          },
           hiringOrganization: {
             "@type": "Organization",
             name: job.company,
+            sameAs: [job.companyLinkedin, job.companyTwitter].filter(Boolean),
+            url: job.companyUrl || undefined,
+            logo: job.logo || undefined,
           },
-          jobLocation: {
-            "@type": "Place",
-            address: {
-              "@type": "PostalAddress",
-              addressCountry: job.country,
-            },
-          },
-          applicantLocationRequirements: {
-            "@type": "Country",
-            name: job.country,
-          },
+          ...(job.remote?.toLowerCase().includes("remote")
+            ? {
+                jobLocationType: "TELECOMMUTE",
+                applicantLocationRequirements: {
+                  "@type": "Country",
+                  name: job.country || job.location,
+                },
+              }
+            : {
+                jobLocation: {
+                  "@type": "Place",
+                  address: {
+                    "@type": "PostalAddress",
+                    addressCountry: job.country || job.location,
+                  },
+                },
+              }),
         }}
         keywords={[
           `${job.title} job`,
@@ -394,7 +395,7 @@ export default function JobDetail() {
           </aside>
         </div>
       </main>
-      <Footer categories={categories} locations={locations} />
+      <Footer categories={categories} locations={locations} siteName={siteName} siteLogo={siteLogo} />
     </div>
   );
 }

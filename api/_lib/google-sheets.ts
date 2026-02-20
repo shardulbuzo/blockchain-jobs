@@ -45,7 +45,7 @@ function getCell(row: string[], indexMap: Record<string, number>, key: string) {
 function parseTags(value: string) {
   if (!value) return [];
   return value
-    .split(/[,;|]/)
+    .split(/[,;|\\n•]/)
     .map((tag) => tag.trim())
     .filter(Boolean);
 }
@@ -84,7 +84,7 @@ async function getSheetData(sheetName: string): Promise<SheetData> {
   });
 
   const sheets = google.sheets({ version: "v4", auth });
-  const range = `${sheetName}!A1:Z10000`;
+  const range = `${sheetName}!A1:ZZ10000`;
   const response = await sheets.spreadsheets.values.get({
     spreadsheetId,
     range,
