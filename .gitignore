@@ -8,3 +8,6 @@ vite.config.ts.*
 credentials.json
 trilateral-ma
 trilateral-site
+.local
+.replit
+client/index 2.html
