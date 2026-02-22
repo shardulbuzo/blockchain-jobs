@@ -50,6 +50,23 @@ function parseTags(value: string) {
     .filter(Boolean);
 }
 
+function slugify(value: string) {
+  return value
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+}
+
+function stableHash(value: string) {
+  let hash = 0;
+  for (let i = 0; i < value.length; i += 1) {
+    hash = (hash << 5) - hash + value.charCodeAt(i);
+    hash |= 0;
+  }
+  return Math.abs(hash).toString(36);
+}
+
 function parseCredentials() {
   const raw =
     process.env.GOOGLE_SHEETS_CREDENTIALS ||
@@ -155,22 +172,24 @@ export async function fetchJobsAndCompanies() {
       const logo = rawLogo || company?.logo || "";
       const tags = parseTags(getCell(row, jobHeader, "Tags"));
       const sector = getCell(row, jobHeader, "Sector") || company?.sector || "";
-      const idBase = `${companyName}-${title}-${idx + 1}`
-        .toLowerCase()
-        .replace(/[^a-z0-9]+/g, "-")
-        .replace(/^-+|-+$/g, "");
+      const link = getCell(row, jobHeader, "Link");
+      const additionDate = getCell(row, jobHeader, "Addition date");
+      const identitySeed = link || `${companyName}::${title}::${additionDate}`;
+      const idBase = `${slugify(companyName)}-${slugify(title)}-${stableHash(identitySeed)}`;
+      const legacyId = `${slugify(companyName)}-${slugify(title)}-${idx + 1}`;
 
       return {
-        id: idBase || `job-${idx + 1}`,
+        id: idBase || `job-${stableHash(identitySeed)}`,
+        legacyId,
         title,
         description: getCell(row, jobHeader, "Job description"),
         location: getCell(row, jobHeader, "Country") || getCell(row, jobHeader, "Location"),
-        link: getCell(row, jobHeader, "Link"),
+        link,
         category: getCell(row, jobHeader, "Category"),
         company: companyName,
         logo,
         tags,
-        additionDate: getCell(row, jobHeader, "Addition date"),
+        additionDate,
         country: getCell(row, jobHeader, "Country"),
         remote: getCell(row, jobHeader, "Remote"),
         sector,

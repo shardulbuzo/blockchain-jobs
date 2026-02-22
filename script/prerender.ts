@@ -253,6 +253,23 @@ async function run() {
 
     await writeFileSafe(path.join(distPublic, "job", job.id, "index.html"), jobHtml);
     sitemapEntries.push(sitemapUrl(canonical, datePosted));
+
+    if (job.legacyId && job.legacyId !== job.id) {
+      const redirectHtml = `<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta http-equiv="refresh" content="0; url=${canonical}" />
+    <link rel="canonical" href="${canonical}" />
+    <meta name="robots" content="noindex, follow" />
+    <title>Redirecting…</title>
+  </head>
+  <body>
+    <p>Redirecting to <a href="${canonical}">${escapeHtml(job.title)}</a></p>
+  </body>
+</html>`;
+      await writeFileSafe(path.join(distPublic, "job", job.legacyId, "index.html"), redirectHtml);
+    }
   }
 
   const jobsByCompany = new Map<string, number>();

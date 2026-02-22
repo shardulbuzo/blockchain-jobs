@@ -116,6 +116,14 @@ export default function JobDetail() {
     );
   }
 
+  if (!job && loaded) {
+    const match = Object.values(jobsById).find((item) => item.legacyId === id);
+    if (match) {
+      navigate(`/job/${match.id}`);
+      return null;
+    }
+  }
+
   if (!job) {
     return (
       <div className="min-h-screen">
