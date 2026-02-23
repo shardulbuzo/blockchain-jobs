@@ -67,6 +67,16 @@ function stableHash(value: string) {
   return Math.abs(hash).toString(36);
 }
 
+function dateKey(value: string) {
+  if (!value) return "";
+  const parsed = Date.parse(value);
+  if (Number.isNaN(parsed)) return "";
+  const d = new Date(parsed);
+  const yyyy = d.getUTCFullYear().toString();
+  const mm = String(d.getUTCMonth() + 1).padStart(2, "0");
+  const dd = String(d.getUTCDate()).padStart(2, "0");
+  return `${yyyy}${mm}${dd}`;
+}
 function parseCredentials() {
   const raw =
     process.env.GOOGLE_SHEETS_CREDENTIALS ||
@@ -167,6 +177,10 @@ export async function fetchJobsAndCompanies() {
       const title = getCell(row, jobHeader, "Job title");
       const companyName = getCell(row, jobHeader, "Company");
       if (!title || !companyName) return null;
+      const jobIdRaw =
+        getCell(row, jobHeader, "Job ID") ||
+        getCell(row, jobHeader, "Job Id") ||
+        getCell(row, jobHeader, "Slug");
       const company = companyByName.get(companyName.toLowerCase());
       const rawLogo = getCell(row, jobHeader, "Logo");
       const logo = rawLogo || company?.logo || "";
@@ -175,12 +189,17 @@ export async function fetchJobsAndCompanies() {
       const link = getCell(row, jobHeader, "Link");
       const additionDate = getCell(row, jobHeader, "Addition date");
       const identitySeed = link || `${companyName}::${title}::${additionDate}`;
-      const idBase = `${slugify(companyName)}-${slugify(title)}-${stableHash(identitySeed)}`;
       const legacyId = `${slugify(companyName)}-${slugify(title)}-${idx + 1}`;
+      const legacyHashId = `${slugify(companyName)}-${slugify(title)}-${stableHash(identitySeed)}`;
+      const cleanedJobId = slugify(jobIdRaw);
+      const baseParts = [slugify(companyName), slugify(title)];
+      if (cleanedJobId) baseParts.push(cleanedJobId);
+      const idBase = baseParts.filter(Boolean).join("-");
 
       return {
         id: idBase || `job-${stableHash(identitySeed)}`,
         legacyId,
+        legacyHashId,
         title,
         description: getCell(row, jobHeader, "Job description"),
         location: getCell(row, jobHeader, "Country") || getCell(row, jobHeader, "Location"),
