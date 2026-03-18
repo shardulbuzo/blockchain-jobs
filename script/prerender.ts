@@ -81,8 +81,13 @@ function withMeta(baseHtml: string, opts: {
     .filter(Boolean)
     .join("\n");
 
-  html = html.replace(/<title>[\s\S]*?<\/title>/i, "");
-  html = html.replace(/<meta name="description"[^>]*>/i, "");
+  html = html.replace(/<title>[\s\S]*?<\/title>/gi, "");
+  html = html.replace(/<meta[^>]+name="description"[^>]*>/gi, "");
+  html = html.replace(/<meta[^>]+name="keywords"[^>]*>/gi, "");
+  html = html.replace(/<meta[^>]+name="robots"[^>]*>/gi, "");
+  html = html.replace(/<meta[^>]+property="og:[^"]+"[^>]*>/gi, "");
+  html = html.replace(/<meta[^>]+name="twitter:[^"]+"[^>]*>/gi, "");
+  html = html.replace(/<link[^>]+rel="canonical"[^>]*>/gi, "");
 
   html = html.replace("</head>", `${metaBlock}\n</head>`);
 
@@ -156,12 +161,50 @@ async function run() {
         },
       ],
     },
-    bodyContent: `<main><h1>Crypto Jobs</h1><p>Search verified crypto and web3 jobs by company, sector, and country.</p></main>`,
+    bodyContent: `<main><h1>Crypto Jobs</h1><p>Search verified crypto and web3 jobs by company, sector, and country.</p><section><h2>Latest roles</h2><ul>${jobs.slice(0, 30).map((job) => `<li><a href="/job/${encodeURIComponent(job.id)}">${escapeHtml(job.title)}</a> at ${escapeHtml(job.company)} in ${escapeHtml(job.location)}</li>`).join("")}</ul></section></main>`,
   });
   await writeFileSafe(path.join(distPublic, "index.html"), homeHtml);
   sitemapEntries.push(sitemapUrl(`${SITE_URL}/`, today));
   sitemapEntries.push(sitemapUrl(`${SITE_URL}/companies`, today));
   sitemapEntries.push(sitemapUrl(`${SITE_URL}/privacy`, today));
+
+  const companiesHtml = withMeta(baseHtml, {
+    title: "Crypto Companies Hiring | Crypto Jobs",
+    description:
+      "Browse crypto companies hiring across engineering, product, design, marketing, operations, and finance roles.",
+    canonical: `${SITE_URL}/companies`,
+    ogImage: `${SITE_URL}/api/og/home`,
+    structuredData: {
+      "@context": "https://schema.org",
+      "@type": "ItemList",
+      name: "Crypto companies hiring",
+      itemListElement: companies
+        .filter((company) => jobs.some((job) => job.company === company.name))
+        .slice(0, 100)
+        .map((company, idx) => ({
+          "@type": "ListItem",
+          position: idx + 1,
+          url: `${SITE_URL}/company/${encodeURIComponent(company.name)}`,
+          name: company.name,
+        })),
+    },
+    bodyContent: `<main><h1>Crypto Companies Hiring</h1><ul>${companies
+      .filter((company) => jobs.some((job) => job.company === company.name))
+      .slice(0, 200)
+      .map((company) => `<li><a href="/company/${encodeURIComponent(company.name)}">${escapeHtml(company.name)}</a></li>`)
+      .join("")}</ul></main>`,
+  });
+  await writeFileSafe(path.join(distPublic, "companies", "index.html"), companiesHtml);
+
+  const privacyHtml = withMeta(baseHtml, {
+    title: "Privacy Policy | Crypto Jobs",
+    description:
+      "Privacy policy for Crypto Jobs, including candidate accounts, employer submissions, analytics, and contact data handling.",
+    canonical: `${SITE_URL}/privacy`,
+    ogImage: `${SITE_URL}/api/og/home`,
+    bodyContent: `<main><h1>Privacy Policy</h1><p>Crypto Jobs processes candidate account data, employer submissions, analytics, and contact information to operate the job board.</p><p>For privacy requests, contact the site operator using the published support channel.</p></main>`,
+  });
+  await writeFileSafe(path.join(distPublic, "privacy", "index.html"), privacyHtml);
 
   for (const job of jobs) {
     const descriptionText = stripTags(job.description || "");
@@ -270,6 +313,23 @@ async function run() {
 </html>`;
       await writeFileSafe(path.join(distPublic, "job", job.legacyId, "index.html"), redirectHtml);
     }
+
+    if (job.legacyHashId && job.legacyHashId !== job.id) {
+      const redirectHtml = `<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta http-equiv="refresh" content="0; url=${canonical}" />
+    <link rel="canonical" href="${canonical}" />
+    <meta name="robots" content="noindex, follow" />
+    <title>Redirecting…</title>
+  </head>
+  <body>
+    <p>Redirecting to <a href="${canonical}">${escapeHtml(job.title)}</a></p>
+  </body>
+</html>`;
+      await writeFileSafe(path.join(distPublic, "job", job.legacyHashId, "index.html"), redirectHtml);
+    }
   }
 
   const jobsByCompany = new Map<string, number>();
@@ -353,7 +413,7 @@ async function run() {
     }
   });
 
-  const buildListBody = (title: string, items: typeof jobs) => {
+  const buildListBody = (title: string, items: typeof jobs, intro: string) => {
     const list = items
       .slice(0, 12)
       .map(
@@ -361,10 +421,10 @@ async function run() {
           `<li><a href=\"/job/${encodeURIComponent(job.id)}\">${escapeHtml(job.title)}</a> at ${escapeHtml(job.company)}</li>`,
       )
       .join("");
-    return `<main><h1>${escapeHtml(title)}</h1><ul>${list}</ul></main>`;
+    return `<main><h1>${escapeHtml(title)}</h1><p>${escapeHtml(intro)}</p><ul>${list}</ul></main>`;
   };
 
-  const buildItemListSchema = (title: string, items: typeof jobs) => ({
+  const buildItemListSchema = (title: string, canonical: string, items: typeof jobs) => ({
     "@context": "https://schema.org",
     "@graph": [
       {
@@ -381,7 +441,7 @@ async function run() {
         "@type": "BreadcrumbList",
         itemListElement: [
           { "@type": "ListItem", position: 1, name: "Home", item: SITE_URL },
-          { "@type": "ListItem", position: 2, name: title, item: `${SITE_URL}` },
+          { "@type": "ListItem", position: 2, name: title, item: canonical },
         ],
       },
     ],
@@ -392,13 +452,13 @@ async function run() {
     const canonical = `${SITE_URL}/category/${slug}`;
     const title = `${category} Jobs`;
     const description = `Browse ${category} crypto and web3 jobs. Discover roles by company, sector, and location on Crypto Jobs.`;
-    const bodyContent = buildListBody(title, items);
+    const bodyContent = buildListBody(title, items, description);
     const html = withMeta(baseHtml, {
       title: `${title} | Crypto Jobs`,
       description,
       canonical,
       ogImage: `${SITE_URL}/api/og/home`,
-      structuredData: buildItemListSchema(title, items),
+      structuredData: buildItemListSchema(title, canonical, items),
       bodyContent,
     });
     await writeFileSafe(path.join(distPublic, "category", slug, "index.html"), html);
@@ -410,13 +470,13 @@ async function run() {
     const canonical = `${SITE_URL}/sector/${slug}`;
     const title = `${sector} Jobs`;
     const description = `Browse ${sector} crypto and web3 jobs. Discover roles by company, sector, and location on Crypto Jobs.`;
-    const bodyContent = buildListBody(title, items);
+    const bodyContent = buildListBody(title, items, description);
     const html = withMeta(baseHtml, {
       title: `${title} | Crypto Jobs`,
       description,
       canonical,
       ogImage: `${SITE_URL}/api/og/home`,
-      structuredData: buildItemListSchema(title, items),
+      structuredData: buildItemListSchema(title, canonical, items),
       bodyContent,
     });
     await writeFileSafe(path.join(distPublic, "sector", slug, "index.html"), html);
@@ -428,13 +488,13 @@ async function run() {
     const canonical = `${SITE_URL}/country/${slug}`;
     const title = `Crypto Jobs in ${country}`;
     const description = `Browse crypto and web3 jobs in ${country}. Discover roles by company, sector, and category on Crypto Jobs.`;
-    const bodyContent = buildListBody(title, items);
+    const bodyContent = buildListBody(title, items, description);
     const html = withMeta(baseHtml, {
       title: `${title} | Crypto Jobs`,
       description,
       canonical,
       ogImage: `${SITE_URL}/api/og/home`,
-      structuredData: buildItemListSchema(title, items),
+      structuredData: buildItemListSchema(title, canonical, items),
       bodyContent,
     });
     await writeFileSafe(path.join(distPublic, "country", slug, "index.html"), html);

@@ -117,7 +117,9 @@ export default function JobDetail() {
   }
 
   if (!job && loaded) {
-    const match = Object.values(jobsById).find((item) => item.legacyId === id);
+    const match = Object.values(jobsById).find(
+      (item) => item.legacyId === id || item.legacyHashId === id,
+    );
     if (match) {
       navigate(`/job/${match.id}`);
       return null;

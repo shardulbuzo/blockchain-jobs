@@ -61,7 +61,7 @@ type HomeProps = {
   seoOverride?: HomeSEO;
   heading?: string;
   subheading?: React.ReactNode;
-};
+} & Record<string, unknown>;
 
 function slugify(value: string) {
   return value

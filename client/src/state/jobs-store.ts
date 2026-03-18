@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 export type Job = {
   id: string;
   legacyId?: string;
+  legacyHashId?: string;
   title: string;
   description: string;
   location: string;

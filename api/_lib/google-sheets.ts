@@ -67,16 +67,14 @@ function stableHash(value: string) {
   return Math.abs(hash).toString(36);
 }
 
-function dateKey(value: string) {
-  if (!value) return "";
-  const parsed = Date.parse(value);
-  if (Number.isNaN(parsed)) return "";
-  const d = new Date(parsed);
-  const yyyy = d.getUTCFullYear().toString();
-  const mm = String(d.getUTCMonth() + 1).padStart(2, "0");
-  const dd = String(d.getUTCDate()).padStart(2, "0");
-  return `${yyyy}${mm}${dd}`;
+function buildJobSlug(companyName: string, title: string, jobIdRaw: string) {
+  const cleanedJobId = slugify(jobIdRaw);
+  if (!cleanedJobId) return "";
+  return [slugify(companyName), slugify(title), cleanedJobId]
+    .filter(Boolean)
+    .join("-");
 }
+
 function parseCredentials() {
   const raw =
     process.env.GOOGLE_SHEETS_CREDENTIALS ||
@@ -191,13 +189,10 @@ export async function fetchJobsAndCompanies() {
       const identitySeed = link || `${companyName}::${title}::${additionDate}`;
       const legacyId = `${slugify(companyName)}-${slugify(title)}-${idx + 1}`;
       const legacyHashId = `${slugify(companyName)}-${slugify(title)}-${stableHash(identitySeed)}`;
-      const cleanedJobId = slugify(jobIdRaw);
-      const baseParts = [slugify(companyName), slugify(title)];
-      if (cleanedJobId) baseParts.push(cleanedJobId);
-      const idBase = baseParts.filter(Boolean).join("-");
+      const idBase = buildJobSlug(companyName, title, jobIdRaw);
 
       return {
-        id: idBase || `job-${stableHash(identitySeed)}`,
+        id: idBase || legacyHashId,
         legacyId,
         legacyHashId,
         title,
