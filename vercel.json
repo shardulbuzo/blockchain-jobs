@@ -7,7 +7,8 @@
     { "handle": "filesystem" },
     { "src": "/superadmin007", "dest": "/api/admin/page" },
     { "src": "/superadmin007/(.*)", "dest": "/api/admin/page" },
-    { "src": "/(job|company|category|sector|country)/(.*)", "dest": "/404.html", "status": 404 },
+    { "src": "/job/(.*)", "dest": "/api/content?type=job&id=$1" },
+    { "src": "/(company|category|sector|country)/(.*)", "dest": "/404.html", "status": 404 },
     { "src": "/(.*)", "dest": "/index.html" }
   ]
 }
